@@ -1,5 +1,6 @@
 [workspace]
 
 members = [
-    "signalr-protocol"
+    "signalrs-protocol",
+    "signalrs-error"
 ]
