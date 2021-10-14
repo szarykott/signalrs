@@ -1,6 +1,8 @@
 [workspace]
 
 members = [
-    "signalrs-protocol",
-    "signalrs-error"
+    "signalrs-core",
+    "signalrs-error",
+    "tests/signalrs-tests",
+    "playground"
 ]
