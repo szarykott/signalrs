@@ -41,19 +41,14 @@ impl HubInvoker {
 
         match r#type.r#type.unwrap_or(MessageType::Other) {
             MessageType::Invocation => {
-                let m: Invocation = match self.format {
+                let m: Invocation<Target2Args> = match self.format {
                     MessageFormat::Json => serde_json::from_slice(message).unwrap(),
                     MessageFormat::MessagePack => rmp_serde::from_read_ref(message).unwrap(),
                 };
 
                 match m.target() {
                     "target2" => {
-                        let args: i32 = match m.arguments() {
-                            Object::Int(i) => i32::try_from(*i).unwrap(),
-                            _ => todo!(),
-                        };
-
-                        self.hub.target2(args).await;
+                        self.hub.target2(m.arguments().0).await;
                     }
                     _ => {}
                 }

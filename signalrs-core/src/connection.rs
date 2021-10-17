@@ -1,12 +1,12 @@
-use crate::protocol::{self, Message, MessageFormat, Object};
+use crate::{protocol::{self, SignalRMessage}, extensions::BoxExt};
 use futures::{
     sink::{Sink, SinkExt},
     stream::{Stream, StreamExt},
 };
 use signalrs_error::SignalRError;
 
-pub trait MessageSink: Sink<Message, Error = SignalRError> + Unpin {}
-pub trait MessageStream: Stream<Item = Message> + Unpin {}
+pub trait MessageSink: Sink<Box<dyn SignalRMessage>, Error = SignalRError> + Unpin {}
+pub trait MessageStream: Stream<Item = Box<dyn SignalRMessage>> + Unpin {}
 
 #[derive(Debug)]
 pub(crate) struct SignalRConnection<I, O> {
@@ -85,40 +85,40 @@ impl<O, S> SignalRSink<O, S>
 where
     O: MessageSink,
 {
-    pub async fn stream_item(
-        &mut self,
-        invocation_id: String,
-        item: Object,
-    ) -> Result<(), SignalRError> {
-        self.output
-            .send(protocol::StreamItem::new(invocation_id, item).into())
-            .await
-    }
+    // pub async fn stream_item<T>(
+    //     &mut self,
+    //     invocation_id: String,
+    //     item: T,
+    // ) -> Result<(), SignalRError> {
+    //     self.output
+    //         .send(protocol::StreamItem::new(invocation_id, item).into_box())
+    //         .await
+    // }
 
-    pub async fn completion(
-        &mut self,
-        invocation_id: String,
-        result: Option<Object>,
-        error: Option<String>,
-    ) -> Result<(), SignalRError> {
-        self.output
-            .send(protocol::Completion::new(invocation_id, result, error).into())
-            .await
-    }
+    // pub async fn completion(
+    //     &mut self,
+    //     invocation_id: String,
+    //     result: Option<Object>,
+    //     error: Option<String>,
+    // ) -> Result<(), SignalRError> {
+    //     self.output
+    //         .send(protocol::Completion::new(invocation_id, result, error).into_box())
+    //         .await
+    // }
 
-    pub async fn ping(&mut self) -> Result<(), SignalRError> {
-        self.output.send(protocol::Ping::new().into()).await
-    }
+    // pub async fn ping(&mut self) -> Result<(), SignalRError> {
+    //     self.output.send(protocol::Ping::new().into_box()).await
+    // }
 
-    pub async fn close(
-        mut self,
-        error: Option<String>,
-        allow_reconnect: Option<bool>,
-    ) -> Result<(), SignalRError> {
-        self.output
-            .send(protocol::Close::new(error, allow_reconnect).into())
-            .await
-    }
+    // pub async fn close(
+    //     mut self,
+    //     error: Option<String>,
+    //     allow_reconnect: Option<bool>,
+    // ) -> Result<(), SignalRError> {
+    //     self.output
+    //         .send(protocol::Close::new(error, allow_reconnect).into_box())
+    //         .await
+    // }
 }
 
 // And some actions are only allowed on client ...
@@ -128,7 +128,7 @@ impl<I> SignalRStream<I>
 where
     I: MessageStream,
 {
-    pub async fn receive(&mut self) -> Option<Message> {
+    pub async fn receive(&mut self) -> Option<Box<dyn SignalRMessage>> {
         self.input.next().await
     }
 }
