@@ -1,2 +1,2 @@
-mod protocol_tests;
 mod msgpack_tests;
+mod protocol_tests;

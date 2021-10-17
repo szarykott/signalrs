@@ -1,11 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use signalrs_error::SignalRError;
-use std::{
-    collections::HashMap,
-    convert::{From, TryFrom, TryInto},
-};
-
+use std::{collections::HashMap, convert::From};
 #[derive(Debug, Serialize, Deserialize)]
 /// Sent by the client to agree on the message format.
 pub struct HandshakeRequest {
@@ -19,22 +14,28 @@ pub struct HandshakeResponse {
     error: Option<String>,
 }
 
+pub trait SignalRMessage {
+    fn message_type(&self) -> MessageType;
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 /// Sent by either party to check if the connection is active.
 pub struct Ping {
-    r#type: u8,
+    r#type: MessageType,
 }
 
 impl Ping {
     pub fn new() -> Self {
-        Ping { r#type: PING }
+        Ping {
+            r#type: MessageType::Ping,
+        }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 /// Sent by the server when a connection is closed. Contains an error if the connection was closed because of an error.
 pub struct Close {
-    r#type: u8,
+    r#type: MessageType,
     error: Option<String>,
     allow_reconnect: Option<bool>,
 }
@@ -42,7 +43,7 @@ pub struct Close {
 impl Close {
     pub fn new(error: Option<String>, allow_reconnect: Option<bool>) -> Self {
         Close {
-            r#type: CLOSE,
+            r#type: MessageType::Close,
             error,
             allow_reconnect,
         }
@@ -52,7 +53,7 @@ impl Close {
 #[derive(Debug, Serialize, Deserialize)]
 /// Indicates a request to invoke a particular method (the Target) with provided Arguments on the remote endpoint.
 pub struct Invocation {
-    r#type: u8,
+    r#type: MessageType,
     headers: Option<HashMap<String, String>>,
     invocation_id: Option<String>,
     target: String,
@@ -73,7 +74,7 @@ impl Invocation {
 #[derive(Debug, Serialize, Deserialize)]
 /// Indicates a request to invoke a streaming method (the Target) with provided Arguments on the remote endpoint.
 pub struct StreamInvocation {
-    r#type: u8,
+    r#type: MessageType,
     headers: Option<HashMap<String, String>>,
     invocation_id: String,
     target: String,
@@ -83,7 +84,7 @@ pub struct StreamInvocation {
 #[derive(Debug, Serialize, Deserialize)]
 /// Indicates individual items of streamed response data from a previous `StreamInvocation` message.
 pub struct StreamItem {
-    r#type: u8,
+    r#type: MessageType,
     headers: Option<HashMap<String, String>>,
     invocation_id: String,
     item: Object,
@@ -92,7 +93,7 @@ pub struct StreamItem {
 impl StreamItem {
     pub fn new(invocation_id: String, item: Object) -> Self {
         StreamItem {
-            r#type: STREAM_ITEM,
+            r#type: MessageType::StreamItem,
             headers: None,
             invocation_id,
             item,
@@ -106,7 +107,7 @@ impl StreamItem {
 /// The result will be absent for void methods.
 /// In case of streaming invocations no further StreamItem messages will be received.
 pub struct Completion {
-    r#type: u8,
+    r#type: MessageType,
     headers: Option<HashMap<String, String>>,
     invocation_id: String,
     result: Option<Object>,
@@ -116,7 +117,7 @@ pub struct Completion {
 impl Completion {
     pub fn new(invocation_id: String, result: Option<Object>, error: Option<String>) -> Self {
         Completion {
-            r#type: COMPLETION,
+            r#type: MessageType::Completion,
             headers: None,
             invocation_id,
             result,
@@ -128,7 +129,7 @@ impl Completion {
 #[derive(Debug, Serialize, Deserialize)]
 /// Sent by the client to cancel a streaming invocation on the server.
 pub struct CancelInvocation {
-    r#type: u8,
+    r#type: MessageType,
     headers: Option<HashMap<String, String>>,
     invocation_id: String,
 }
@@ -136,7 +137,7 @@ pub struct CancelInvocation {
 impl CancelInvocation {
     pub fn new(invocation_id: String) -> Self {
         CancelInvocation {
-            r#type: CANCEL_INVOCATION,
+            r#type: MessageType::CancelInvocation,
             headers: None,
             invocation_id,
         }
@@ -175,7 +176,7 @@ pub const CANCEL_INVOCATION: u8 = 5;
 pub const PING: u8 = 6;
 pub const CLOSE: u8 = 7;
 
-#[derive(Debug, Serialize_repr, Deserialize_repr)]
+#[derive(Debug, Serialize_repr, Deserialize_repr, Clone, Copy)]
 #[repr(u8)]
 pub enum MessageType {
     Invocation = 1,
@@ -215,22 +216,25 @@ pub enum Object {
     Obj(HashMap<String, Object>),
 }
 
-// macro_rules! try_from_for {
-//     ($($t:ty),*) => {
-//         $(impl TryFrom<&Object> for $t {
-//             type Error = SignalRError;
+macro_rules! singalr_message {
+    ($($t:ty),*) => {
+        $(impl SignalRMessage for $t {
+            fn message_type(&self) -> MessageType {
+                self.r#type
+            }
+        })*
+    };
+}
 
-//             fn try_from(value: &Object) -> Result<Self, Self::Error> {
-//                 match value {
-//                     Object::Int(v) => TryInto::try_into(*v as $t),
-//                     _ => Err(SignalRError::ProtocolViolation("String".to_string()))
-//                 }
-//             }
-//         })*
-//     };
-// }
-
-// try_from_for!(i8, i16, i32, i64, isize, f32, f64, bool, String);
+singalr_message![
+    Ping,
+    Invocation,
+    StreamInvocation,
+    StreamItem,
+    Completion,
+    CancelInvocation,
+    Close
+];
 
 impl From<StreamItem> for Message {
     fn from(si: StreamItem) -> Self {
