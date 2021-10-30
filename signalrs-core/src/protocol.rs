@@ -15,6 +15,12 @@ pub struct HandshakeResponse {
     error: Option<String>,
 }
 
+impl HandshakeResponse {
+    pub fn no_error() -> Self {
+        HandshakeResponse { error: None }
+    }
+}
+
 pub trait SignalRMessage {
     fn message_type(&self) -> MessageType;
 }
@@ -58,7 +64,7 @@ pub struct Invocation<A> {
     headers: Option<HashMap<String, String>>,
     invocation_id: Option<String>,
     target: String,
-    arguments: A,
+    arguments: Option<A>,
     stream_ids: Option<Vec<String>>,
 }
 
@@ -67,8 +73,8 @@ impl<A> Invocation<A> {
         self.target.as_str()
     }
 
-    pub fn arguments(&self) -> &A {
-        &self.arguments
+    pub fn arguments(&mut self) -> Option<A> {
+        self.arguments.take()
     }
 }
 
@@ -154,6 +160,28 @@ pub enum MessageFormat {
     MessagePack,
 }
 
+impl MessageFormat {
+    pub fn from_bytes<'de, T>(&self, bytes: &'de [u8]) -> T
+    where
+        T: Deserialize<'de>,
+    {
+        match self {
+            MessageFormat::Json => serde_json::from_slice(bytes).unwrap(), // TODO: Fixme
+            MessageFormat::MessagePack => rmp_serde::from_read_ref(bytes).unwrap(), // TODO: Fixm
+        }
+    }
+
+    pub fn to_bytes<T>(&self, value: &T) -> Vec<u8>
+    where
+        T: Serialize,
+    {
+        match self {
+            MessageFormat::Json => serde_json::to_vec(value).unwrap(), // TODO: Fixm
+            MessageFormat::MessagePack => rmp_serde::to_vec(value).unwrap(), // TODO: Fixm
+        }
+    }
+}
+
 #[derive(Debug, Serialize_repr, Deserialize_repr, Clone, Copy)]
 #[repr(u8)]
 pub enum MessageType {
@@ -192,11 +220,7 @@ macro_rules! singalr_message {
     };
 }
 
-singalr_message![
-    Ping,
-    CancelInvocation,
-    Close
-];
+singalr_message![Ping, CancelInvocation, Close];
 
 impl<T> SignalRMessage for Invocation<T> {
     fn message_type(&self) -> MessageType {
