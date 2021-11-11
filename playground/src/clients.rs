@@ -1,28 +1,38 @@
-use alloc::alloc::Global;
 use futures::{
     sink::Sink,
-    stream::{FuturesUnordered, Map, Stream, StreamExt, StreamFuture},
+    stream::{FuturesUnordered, Stream, StreamExt, StreamFuture},
 };
-use signalrs_core::protocol::*;
+use signalrs_core::{protocol::*, extensions::BoxExt};
 use signalrs_error::SignalRError;
-use std::collections::HashMap;
 
-pub struct IncomingClient {
+pub struct IncomingClient<St> {
     input: Box<dyn Stream<Item = Vec<u8>> + Unpin>,
     output: Box<dyn Sink<Vec<u8>, Error = SignalRError> + Unpin>,
     format: MessageFormat,
+    data: St
+}
+
+impl IncomingClient<()> {
+    fn add_number(self, number: usize) -> IncomingClient<usize> {
+        IncomingClient {
+            data: number,
+            input: self.input,
+            output: self.output,
+            format: self.format,
+        }
+    }
 }
 
 pub struct Clients {
     counter: usize,
-    inputs: FuturesUnordered<StreamFuture<Map<Box<dyn Stream<Item = (usize, Vec<u8>)> + Unpin>>>>,
+    futures: FuturesUnordered<>,
 }
 
 impl Clients {
-    pub async fn push(&mut self, client: IncomingClient) {
-        let mapped = client.input.map(|e| (self.counter, e));
-        let sf = mapped.into_future();
-        self.inputs.push(sf);
+    pub async fn push(&mut self, client: IncomingClient<()>) {
+        let numbered = client.add_number(self.counter);
+        self.counter += 1;
+
     }
 }
 
