@@ -1,6 +1,6 @@
 use futures::{
     sink::Sink,
-    stream::{FuturesUnordered, Stream, StreamExt, StreamFuture},
+    stream::{FuturesUnordered, Stream, StreamExt, StreamFuture, SelectAll},
 };
 use signalrs_core::{protocol::*, extensions::BoxExt};
 use signalrs_error::SignalRError;
@@ -25,14 +25,20 @@ impl IncomingClient<()> {
 
 pub struct Clients {
     counter: usize,
-    futures: FuturesUnordered<>,
+    inputs: SelectAll<Box<dyn Stream<Item = (usize, Vec<u8>)> + Unpin>>,
 }
 
 impl Clients {
-    pub async fn push(&mut self, client: IncomingClient<()>) {
-        let numbered = client.add_number(self.counter);
-        self.counter += 1;
+    pub async fn push(&mut self, client: IncomingClient<usize>) {
+        let new_number = self.increment_number();
+        let mapped = client.input.map(move |d| (new_number, d));
+        self.inputs.push(mapped.into_box());
+    }
 
+    fn increment_number(&mut self) -> usize {
+        let prev = self.counter;
+        self.counter += 1;
+        prev
     }
 }
 
