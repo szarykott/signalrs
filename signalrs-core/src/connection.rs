@@ -1,4 +1,7 @@
-use crate::{protocol::{self, SignalRMessage}, extensions::BoxExt};
+use crate::{
+    extensions::BoxExt,
+    protocol::{self, SignalRMessage},
+};
 use futures::{
     sink::{Sink, SinkExt},
     stream::{Stream, StreamExt},

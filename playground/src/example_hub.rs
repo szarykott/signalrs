@@ -2,6 +2,7 @@ use futures::{
     select,
     sink::{Sink, SinkExt},
     stream::{FusedStream, Stream, StreamExt},
+    FutureExt,
 };
 use serde::{Deserialize, Serialize};
 use signalrs_core::{extensions::BoxExt, protocol::*};
@@ -16,7 +17,8 @@ pub struct Hub {
 
 // TODO: Try FuturesUnordered to implement client polling
 pub struct Client {
-    input: Box<dyn Stream<Item = (usize, Vec<u8>)>>,
+    input: Box<dyn Stream<Item = (usize, Vec<u8>)> + Unpin>,
+    output: Box<dyn Sink<Vec<u8>, Error = SignalRError> + Unpin>,
     format: MessageFormat,
 }
 
@@ -30,6 +32,7 @@ impl IncomingClient {
     fn as_client(self, id: usize) -> Client {
         Client {
             input: self.input.map(move |i| (id, i)).into_box(),
+            output: self.output,
             format: self.format,
         }
     }
@@ -74,42 +77,50 @@ impl Hub {
                         self.counter += 1;
                     }
                 }
+                message = self.poll_clients().fuse() => {
+                    if let Some((_id, message)) = message {
+                        self.invoke(&message).await
+                    }
+                }
             }
         }
     }
 
-    // pub async fn invoke(&mut self, message: &[u8]) {
-    //     let r#type: Type = match self.format {
-    //         MessageFormat::Json => serde_json::from_slice(message).unwrap(),
-    //         MessageFormat::MessagePack => rmp_serde::from_read_ref(message).unwrap(),
-    //     };
+    async fn poll_clients(&mut self) -> Option<(usize, Vec<u8>)> {
+        for (_, client) in self.clients.iter_mut() {
+            return client.input.next().await;
+        }
 
-    //     match r#type.r#type.unwrap_or(MessageType::Other) {
-    //         MessageType::Invocation => {
-    //             let mut invocation: Invocation<Target2Args> = match self.format {
-    //                 MessageFormat::Json => serde_json::from_slice(message).unwrap(),
-    //                 MessageFormat::MessagePack => rmp_serde::from_read_ref(message).unwrap(),
-    //             };
+        None
+    }
 
-    //             match invocation.target() {
-    //                 "target1" => self.target1().await,
-    //                 "target2" => {
-    //                     if let Some(args) = invocation.arguments() {
-    //                         self.target2(args.0).await;
-    //                     }
-    //                 }
-    //                 _ => {}
-    //             }
-    //         }
-    //         MessageType::StreamItem => todo!(),
-    //         MessageType::Completion => todo!(),
-    //         MessageType::StreamInvocation => todo!(),
-    //         MessageType::CancelInvocation => todo!(),
-    //         MessageType::Ping => todo!(),
-    //         MessageType::Close => todo!(),
-    //         MessageType::Other => todo!(),
-    //     }
-    // }
+    pub async fn invoke(&mut self, message: &[u8]) {
+        let r#type: Type = serde_json::from_slice(message).unwrap();
+
+        match r#type.r#type.unwrap_or(MessageType::Other) {
+            MessageType::Invocation => {
+                let mut invocation: Invocation<Target2Args> =
+                    serde_json::from_slice(message).unwrap();
+
+                match invocation.target() {
+                    "target1" => self.target1().await,
+                    "target2" => {
+                        if let Some(args) = invocation.arguments() {
+                            self.target2(args.0).await;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            MessageType::StreamItem => todo!(),
+            MessageType::Completion => todo!(),
+            MessageType::StreamInvocation => todo!(),
+            MessageType::CancelInvocation => todo!(),
+            MessageType::Ping => todo!(),
+            MessageType::Close => todo!(),
+            MessageType::Other => todo!(),
+        }
+    }
 }
 
 pub trait HubResponse: Serialize {}

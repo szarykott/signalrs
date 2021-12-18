@@ -1,15 +1,15 @@
 use futures::{
     sink::Sink,
-    stream::{FuturesUnordered, Stream, StreamExt, StreamFuture, SelectAll},
+    stream::{FuturesUnordered, SelectAll, Stream, StreamExt, StreamFuture},
 };
-use signalrs_core::{protocol::*, extensions::BoxExt};
+use signalrs_core::{extensions::BoxExt, protocol::*};
 use signalrs_error::SignalRError;
 
 pub struct IncomingClient<St> {
     input: Box<dyn Stream<Item = Vec<u8>> + Unpin>,
     output: Box<dyn Sink<Vec<u8>, Error = SignalRError> + Unpin>,
     format: MessageFormat,
-    data: St
+    data: St,
 }
 
 impl IncomingClient<()> {
