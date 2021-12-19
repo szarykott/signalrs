@@ -57,7 +57,7 @@ impl Close {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 /// Indicates a request to invoke a particular method (the Target) with provided Arguments on the remote endpoint.
 pub struct Invocation<A> {
     r#type: MessageType,

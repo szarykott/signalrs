@@ -5,4 +5,3 @@ mod connection;
 pub mod extensions;
 mod hub;
 pub mod protocol;
-pub mod routing;

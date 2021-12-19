@@ -1,116 +1,44 @@
-use futures::{
-    select,
-    sink::{Sink, SinkExt},
-    stream::{FusedStream, Stream, StreamExt},
-    FutureExt,
-};
-use serde::{Deserialize, Serialize};
-use signalrs_core::{extensions::BoxExt, protocol::*};
-use signalrs_error::SignalRError;
-use std::collections::HashMap;
+use serde;
+use serde::Deserialize;
+use signalrs_core::protocol::*;
+use std::sync::{Arc, Mutex};
 
-pub struct Hub {
-    counter: usize,
-    clients: HashMap<usize, Client>,
-    outputs: HashMap<usize, Box<dyn Sink<Vec<u8>, Error = SignalRError>>>,
+pub struct HubInvoker {
+    hub: Hub,
 }
 
-// TODO: Try FuturesUnordered to implement client polling
-pub struct Client {
-    input: Box<dyn Stream<Item = (usize, Vec<u8>)> + Unpin>,
-    output: Box<dyn Sink<Vec<u8>, Error = SignalRError> + Unpin>,
-    format: MessageFormat,
+#[derive(Deserialize, Debug, Clone, Copy)]
+struct Type {
+    #[serde(rename = "type")]
+    message_type: MessageType,
 }
 
-pub struct IncomingClient {
-    input: Box<dyn Stream<Item = Vec<u8>> + Unpin>,
-    output: Box<dyn Sink<Vec<u8>, Error = SignalRError> + Unpin>,
-    format: MessageFormat,
-}
-
-impl IncomingClient {
-    fn as_client(self, id: usize) -> Client {
-        Client {
-            input: self.input.map(move |i| (id, i)).into_box(),
-            output: self.output,
-            format: self.format,
+impl HubInvoker {
+    pub fn new() -> Self {
+        HubInvoker {
+            hub: Hub {
+                counter: Arc::new(Mutex::new(0)),
+            },
         }
     }
 
-    async fn initialize(&mut self) {
-        let request = self
-            .input
-            .next()
-            .await
-            .and_then(|b| Some(self.format.from_bytes::<HandshakeRequest>(&b)));
-
-        if let Some(request) = request {
-            self.output
-                .send(self.format.to_bytes(&HandshakeResponse::no_error()))
-                .await
-                .unwrap(); // TODO: Fixme
-        }
-    }
-}
-
-impl Hub {
-    pub async fn target1(&mut self) {
-        todo!()
+    pub async fn invoke_binary(&self, _data: &[u8]) -> Vec<u8> {
+        vec![0, 1, 1]
     }
 
-    pub async fn target2(&mut self, v: i32) -> impl HubResponse {
-        return "";
-    }
-}
+    pub async fn invoke_text(&self, text: &str) -> String {
+        let message_type: Type = serde_json::from_str(text).unwrap();
 
-impl Hub {
-    pub async fn run<T>(mut self, mut clients_stream: T)
-    where
-        T: Stream<Item = IncomingClient> + Unpin + FusedStream,
-    {
-        loop {
-            select! {
-                new_client = clients_stream.next() => {
-                    if let Some(mut new_client) = new_client {
-                        new_client.initialize().await;
-                        self.clients.insert(self.counter, new_client.as_client(self.counter));
-                        self.counter += 1;
-                    }
-                }
-                message = self.poll_clients().fuse() => {
-                    if let Some((_id, message)) = message {
-                        self.invoke(&message).await
-                    }
-                }
-            }
-        }
-    }
+        dbg!(message_type);
 
-    async fn poll_clients(&mut self) -> Option<(usize, Vec<u8>)> {
-        for (_, client) in self.clients.iter_mut() {
-            return client.input.next().await;
-        }
-
-        None
-    }
-
-    pub async fn invoke(&mut self, message: &[u8]) {
-        let r#type: Type = serde_json::from_slice(message).unwrap();
-
-        match r#type.r#type.unwrap_or(MessageType::Other) {
+        match message_type.message_type {
             MessageType::Invocation => {
-                let mut invocation: Invocation<Target2Args> =
-                    serde_json::from_slice(message).unwrap();
+                let mut invocation: Invocation<Target2Args> = serde_json::from_str(text).unwrap();
 
-                match invocation.target() {
-                    "target1" => self.target1().await,
-                    "target2" => {
-                        if let Some(args) = invocation.arguments() {
-                            self.target2(args.0).await;
-                        }
-                    }
-                    _ => {}
-                }
+                dbg!(invocation.clone());
+
+                let arguments = invocation.arguments().unwrap();
+                return self.hub.target2(arguments.0);
             }
             MessageType::StreamItem => todo!(),
             MessageType::Completion => todo!(),
@@ -123,13 +51,18 @@ impl Hub {
     }
 }
 
-pub trait HubResponse: Serialize {}
-impl<T> HubResponse for T where T: Serialize {}
-
-#[derive(Deserialize)]
-pub struct Target2Args(i32);
-
-#[derive(Deserialize)]
-pub struct Type {
-    r#type: Option<MessageType>,
+pub struct Hub {
+    counter: Arc<Mutex<usize>>,
 }
+
+impl Hub {
+    pub fn target2(&self, v: usize) -> String {
+        let mut counter = self.counter.lock().unwrap();
+        let new_counter = *counter + v;
+        *counter = new_counter;
+        format!("{}", new_counter)
+    }
+}
+
+#[derive(Deserialize, Clone, Debug)]
+struct Target2Args(usize, #[serde(default)] ());

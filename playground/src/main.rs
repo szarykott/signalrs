@@ -3,6 +3,6 @@ mod example_hub;
 mod ws_transport;
 
 #[tokio::main]
-async fn main() {
-    let server = ws_transport::run().await.unwrap();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ws_transport::run(example_hub::HubInvoker::new()).await
 }
