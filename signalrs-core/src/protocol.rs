@@ -62,7 +62,7 @@ impl Close {
 pub struct Invocation<A> {
     r#type: MessageType,
     headers: Option<HashMap<String, String>>,
-    invocation_id: Option<String>,
+    id: Option<String>,
     target: String,
     arguments: Option<A>,
     stream_ids: Option<Vec<String>>,
@@ -71,6 +71,10 @@ pub struct Invocation<A> {
 impl<A> Invocation<A> {
     pub fn target(&self) -> &str {
         self.target.as_str()
+    }
+
+    pub fn id(&self) -> &Option<String> {
+        &self.id
     }
 
     pub fn arguments(&mut self) -> Option<A> {
@@ -83,7 +87,7 @@ impl<A> Invocation<A> {
 pub struct StreamInvocation<A> {
     r#type: MessageType,
     headers: Option<HashMap<String, String>>,
-    invocation_id: String,
+    id: String,
     target: String,
     arguments: A,
 }
@@ -93,16 +97,16 @@ pub struct StreamInvocation<A> {
 pub struct StreamItem<I> {
     r#type: MessageType,
     headers: Option<HashMap<String, String>>,
-    invocation_id: String,
+    id: String,
     item: I,
 }
 
 impl<I> StreamItem<I> {
-    pub fn new(invocation_id: String, item: I) -> Self {
+    pub fn new(id: String, item: I) -> Self {
         StreamItem {
             r#type: MessageType::StreamItem,
             headers: None,
-            invocation_id,
+            id,
             item,
         }
     }
@@ -116,17 +120,17 @@ impl<I> StreamItem<I> {
 pub struct Completion<R> {
     r#type: MessageType,
     headers: Option<HashMap<String, String>>,
-    invocation_id: String,
+    id: String,
     result: Option<R>,
     error: Option<String>,
 }
 
 impl<R> Completion<R> {
-    pub fn new(invocation_id: String, result: Option<R>, error: Option<String>) -> Self {
+    pub fn new(id: String, result: Option<R>, error: Option<String>) -> Self {
         Completion {
             r#type: MessageType::Completion,
             headers: None,
-            invocation_id,
+            id,
             result,
             error,
         }
@@ -138,15 +142,15 @@ impl<R> Completion<R> {
 pub struct CancelInvocation {
     r#type: MessageType,
     headers: Option<HashMap<String, String>>,
-    invocation_id: String,
+    id: String,
 }
 
 impl CancelInvocation {
-    pub fn new(invocation_id: String) -> Self {
+    pub fn new(id: String) -> Self {
         CancelInvocation {
             r#type: MessageType::CancelInvocation,
             headers: None,
-            invocation_id,
+            id,
         }
     }
 }

@@ -1,9 +1,9 @@
-use crate::example_hub;
+use crate::example_hub::*;
 use futures::{sink::SinkExt, stream::StreamExt};
 use tokio::net::TcpListener;
 use tokio_tungstenite::tungstenite::Message;
 
-pub async fn run(invoker: example_hub::HubInvoker) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run(invoker: HubInvoker) -> Result<(), Box<dyn std::error::Error>> {
     let socket = TcpListener::bind("127.0.0.1:8080").await?;
 
     while let Ok((tcp_stream, _addr)) = socket.accept().await {
@@ -14,8 +14,11 @@ pub async fn run(invoker: example_hub::HubInvoker) -> Result<(), Box<dyn std::er
             match msg {
                 Message::Text(f) => {
                     dbg!(f.clone());
-                    let response = invoker.invoke_text(&f).await;
-                    outgoing.send(Message::Text(response)).await.unwrap();
+                    match invoker.invoke_text(&f).await {
+                        HubResponse::Void => { /* skip */ },
+                        HubResponse::Single(response) => outgoing.send(Message::Text(response)).await.unwrap(),
+                        HubResponse::Stream => todo!(),
+                    }
                 }
                 Message::Binary(f) => {
                     let response = invoker.invoke_binary(&f).await;

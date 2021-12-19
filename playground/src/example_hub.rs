@@ -13,6 +13,12 @@ struct Type {
     message_type: MessageType,
 }
 
+pub enum HubResponse<T> {
+    Void,
+    Single(T),
+    Stream
+}
+
 impl HubInvoker {
     pub fn new() -> Self {
         HubInvoker {
@@ -26,7 +32,7 @@ impl HubInvoker {
         vec![0, 1, 1]
     }
 
-    pub async fn invoke_text(&self, text: &str) -> String {
+    pub async fn invoke_text(&self, text: &str) -> HubResponse<String> {
         let message_type: Type = serde_json::from_str(text).unwrap();
 
         dbg!(message_type);
@@ -38,7 +44,16 @@ impl HubInvoker {
                 dbg!(invocation.clone());
 
                 let arguments = invocation.arguments().unwrap();
-                return self.hub.target2(arguments.0);
+
+                let result = self.hub.target2(arguments.0);
+
+                match invocation.id() {
+                    Some(id) => {
+                        let return_message = Completion::new(id.clone(), Some(result), None);
+                        HubResponse::Single(serde_json::to_string(&return_message).unwrap())
+                    }, 
+                    None => HubResponse::Void
+                }
             }
             MessageType::StreamItem => todo!(),
             MessageType::Completion => todo!(),
