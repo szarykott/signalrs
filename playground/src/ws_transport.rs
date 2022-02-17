@@ -7,24 +7,25 @@ pub async fn run(invoker: HubInvoker) -> Result<(), Box<dyn std::error::Error>> 
     let socket = TcpListener::bind("127.0.0.1:8080").await?;
 
     while let Ok((tcp_stream, _addr)) = socket.accept().await {
-        let (mut outgoing, mut incoming) =
-            tokio_tungstenite::accept_async(tcp_stream).await?.split();
+        let (mut tx, mut rx) = tokio_tungstenite::accept_async(tcp_stream).await?.split();
 
-        while let Some(Ok(msg)) = incoming.next().await {
+        while let Some(Ok(msg)) = rx.next().await {
             match msg {
                 Message::Text(f) => {
                     dbg!(f.clone());
                     match invoker.invoke_text(&f).await {
-                        HubResponse::Void => { /* skip */ },
-                        HubResponse::Single(response) => outgoing.send(Message::Text(response)).await.unwrap(),
+                        HubResponse::Void => { /* skip */ }
+                        HubResponse::Single(response) => {
+                            tx.send(Message::Text(response)).await.unwrap()
+                        }
                         HubResponse::Stream => todo!(),
                     }
                 }
                 Message::Binary(f) => {
                     let response = invoker.invoke_binary(&f).await;
-                    outgoing.send(Message::Binary(response)).await.unwrap();
+                    tx.send(Message::Binary(response)).await.unwrap();
                 }
-                Message::Ping(d) => outgoing.send(Message::Pong(d)).await.unwrap(),
+                Message::Ping(d) => tx.send(Message::Pong(d)).await.unwrap(),
                 Message::Pong(_) => { /* ignore */ }
                 Message::Close(_) => { /* ignore */ }
             }

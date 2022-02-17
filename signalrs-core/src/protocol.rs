@@ -57,24 +57,35 @@ impl Close {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 /// Indicates a request to invoke a particular method (the Target) with provided Arguments on the remote endpoint.
 pub struct Invocation<A> {
     r#type: MessageType,
     headers: Option<HashMap<String, String>>,
-    id: Option<String>,
+    invocation_id: Option<String>,
     target: String,
     arguments: Option<A>,
     stream_ids: Option<Vec<String>>,
 }
 
 impl<A> Invocation<A> {
+    pub fn new(invocation_id: Option<String>, target: String, arguments: Option<A>) -> Self {
+        Invocation {
+            r#type: MessageType::Invocation,
+            headers: None,
+            invocation_id,
+            target,
+            arguments,
+            stream_ids: None,
+        }
+    }
+
     pub fn target(&self) -> &str {
         self.target.as_str()
     }
 
     pub fn id(&self) -> &Option<String> {
-        &self.id
+        &self.invocation_id
     }
 
     pub fn arguments(&mut self) -> Option<A> {
@@ -112,7 +123,7 @@ impl<I> StreamItem<I> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 /// Indicates a previous Invocation or StreamInvocation has completed.
 /// Contains an error if the invocation concluded with an error or the result of a non-streaming method invocation.
 /// The result will be absent for void methods.
@@ -186,7 +197,7 @@ impl MessageFormat {
     }
 }
 
-#[derive(Debug, Serialize_repr, Deserialize_repr, Clone, Copy)]
+#[derive(Debug, Serialize_repr, Deserialize_repr, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum MessageType {
     Invocation = 1,

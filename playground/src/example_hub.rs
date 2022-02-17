@@ -1,7 +1,11 @@
 use serde;
 use serde::Deserialize;
 use signalrs_core::protocol::*;
-use std::sync::{Arc, Mutex};
+use std::{
+    ops::Add,
+    sync::{Arc, Mutex},
+};
+use tokio_tungstenite::tungstenite::handshake::client::Response;
 
 pub struct HubInvoker {
     hub: Hub,
@@ -13,17 +17,32 @@ struct Type {
     message_type: MessageType,
 }
 
+#[derive(Deserialize, Debug, Clone)]
+struct Target {
+    target: String,
+}
+
+#[derive(Debug, Clone)]
 pub enum HubResponse<T> {
     Void,
     Single(T),
-    Stream
+    Stream,
+}
+
+impl<T> HubResponse<T> {
+    pub fn unwrap_single(self) -> T {
+        match self {
+            HubResponse::Single(v) => v,
+            _ => panic!(),
+        }
+    }
 }
 
 impl HubInvoker {
     pub fn new() -> Self {
         HubInvoker {
             hub: Hub {
-                counter: Arc::new(Mutex::new(0)),
+                _counter: Arc::new(Mutex::new(0)),
             },
         }
     }
@@ -35,24 +54,67 @@ impl HubInvoker {
     pub async fn invoke_text(&self, text: &str) -> HubResponse<String> {
         let message_type: Type = serde_json::from_str(text).unwrap();
 
-        dbg!(message_type);
-
         match message_type.message_type {
             MessageType::Invocation => {
-                let mut invocation: Invocation<Target2Args> = serde_json::from_str(text).unwrap();
+                let target: Target = serde_json::from_str(text).unwrap();
+                match target.target.as_str() {
+                    "add" => {
+                        let mut invocation: Invocation<AddArgs> =
+                            serde_json::from_str(text).unwrap();
 
-                dbg!(invocation.clone());
+                        let arguments = invocation.arguments().unwrap();
 
-                let arguments = invocation.arguments().unwrap();
+                        let result = self.hub.add(arguments.0, arguments.1);
 
-                let result = self.hub.target2(arguments.0);
+                        match invocation.id() {
+                            Some(id) => {
+                                let return_message =
+                                    Completion::new(id.clone(), Some(result), None);
+                                HubResponse::Single(serde_json::to_string(&return_message).unwrap())
+                            }
+                            None => HubResponse::Void,
+                        }
+                    }
+                    "single_result_failure" => {
+                        let mut invocation: Invocation<SingleResultFailureArgs> =
+                            serde_json::from_str(text).unwrap();
 
-                match invocation.id() {
-                    Some(id) => {
-                        let return_message = Completion::new(id.clone(), Some(result), None);
-                        HubResponse::Single(serde_json::to_string(&return_message).unwrap())
-                    }, 
-                    None => HubResponse::Void
+                        let arguments = invocation.arguments().unwrap();
+
+                        let result = self.hub.single_result_failure(arguments.0, arguments.1);
+
+                        match (invocation.id(), result) {
+                            (Some(id), Ok(result)) => {
+                                let return_message =
+                                    Completion::new(id.clone(), Some(result), None);
+                                HubResponse::Single(serde_json::to_string(&return_message).unwrap())
+                            }
+                            (Some(id), Err(e)) => {
+                                let return_message =
+                                    Completion::<()>::new(id.clone(), None, Some(e));
+                                HubResponse::Single(serde_json::to_string(&return_message).unwrap())
+                            }
+                            _ => HubResponse::Void,
+                        }
+                    }
+                    "batched" => {
+                        let mut invocation: Invocation<BatchedArgs> =
+                            serde_json::from_str(text).unwrap();
+
+                        let arguments = invocation.arguments().unwrap();
+
+                        let result = self.hub.batched(arguments.0);
+
+                        match invocation.id() {
+                            Some(id) => {
+                                let return_message =
+                                    Completion::new(id.clone(), Some(result), None);
+                                HubResponse::Single(serde_json::to_string(&return_message).unwrap())
+                            }
+                            None => HubResponse::Void,
+                        }
+                    }
+                    _ => panic!(),
                 }
             }
             MessageType::StreamItem => todo!(),
@@ -67,17 +129,30 @@ impl HubInvoker {
 }
 
 pub struct Hub {
-    counter: Arc<Mutex<usize>>,
+    _counter: Arc<Mutex<usize>>,
 }
 
 impl Hub {
-    pub fn target2(&self, v: usize) -> String {
-        let mut counter = self.counter.lock().unwrap();
-        let new_counter = *counter + v;
-        *counter = new_counter;
-        format!("{}", new_counter)
+    pub fn add(&self, a: u32, b: u32) -> u32 {
+        a + b
+    }
+
+    pub fn single_result_failure(&self, _a: u32, _b: u32) -> Result<u32, String> {
+        Err("An error!".to_string())
+    }
+
+    pub fn batched(&self, count: usize) -> Vec<usize> {
+        std::iter::successors(Some(0usize), |p| Some(p + 1))
+            .take(count)
+            .collect()
     }
 }
 
 #[derive(Deserialize, Clone, Debug)]
-struct Target2Args(usize, #[serde(default)] ());
+struct BatchedArgs(usize, #[serde(default)] ());
+
+#[derive(Deserialize, Clone, Debug)]
+struct AddArgs(u32, u32);
+
+#[derive(Deserialize, Clone, Debug)]
+struct SingleResultFailureArgs(u32, u32);

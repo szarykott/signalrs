@@ -1,6 +1,4 @@
-mod clients;
-mod example_hub;
-mod ws_transport;
+use playground::{example_hub, ws_transport};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
