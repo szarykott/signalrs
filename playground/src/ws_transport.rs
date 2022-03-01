@@ -18,7 +18,7 @@ pub async fn run(invoker: HubInvoker) -> Result<(), Box<dyn std::error::Error>> 
                         HubResponse::Single(response) => {
                             tx.send(Message::Text(response)).await.unwrap()
                         }
-                        HubResponse::Stream => todo!(),
+                        HubResponse::Stream(_) => todo!(),
                     }
                 }
                 Message::Binary(f) => {

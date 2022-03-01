@@ -2,10 +2,9 @@ use serde;
 use serde::Deserialize;
 use signalrs_core::protocol::*;
 use std::{
-    ops::Add,
     sync::{Arc, Mutex},
 };
-use tokio_tungstenite::tungstenite::handshake::client::Response;
+use futures::Stream;
 
 pub struct HubInvoker {
     hub: Hub,
@@ -26,7 +25,20 @@ struct Target {
 pub enum HubResponse<T> {
     Void,
     Single(T),
-    Stream,
+    Stream(SignalRStream<T>),
+}
+
+#[derive(Debug, Clone)]
+pub struct SignalRStream<T> {
+    v: T
+}
+
+impl<T> Stream for SignalRStream<T> {
+    type Item = T;
+
+    fn poll_next(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
+        todo!()
+    }
 }
 
 impl<T> HubResponse<T> {
@@ -34,6 +46,13 @@ impl<T> HubResponse<T> {
         match self {
             HubResponse::Single(v) => v,
             _ => panic!(),
+        }
+    }
+
+    pub fn unwrap_stream(self) -> SignalRStream<T> {
+        match self {
+            HubResponse::Stream(stream) => stream,
+            _ => panic!()
         }
     }
 }

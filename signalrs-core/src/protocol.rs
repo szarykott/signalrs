@@ -103,7 +103,7 @@ pub struct StreamInvocation<A> {
     arguments: A,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 /// Indicates individual items of streamed response data from a previous `StreamInvocation` message.
 pub struct StreamItem<I> {
     r#type: MessageType,
