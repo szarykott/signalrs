@@ -187,6 +187,16 @@ impl Hub {
             }
         }
     }
+
+    // TODO: Break the stream on error?
+    pub fn stream_failure(&self, count: usize) -> impl Stream<Item = Result<usize, String>> {
+        stream! {
+            for i in 0..count {
+                yield Ok(i);
+            }
+            yield Err("Ran out of data!".to_string())
+        }
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]
