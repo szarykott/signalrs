@@ -1,10 +1,13 @@
+use async_stream::stream;
+use futures::{Stream, StreamExt};
 use serde;
 use serde::Deserialize;
 use signalrs_core::protocol::*;
 use std::{
+    fmt::Debug,
     sync::{Arc, Mutex},
+    pin::Pin
 };
-use futures::Stream;
 
 pub struct HubInvoker {
     hub: Hub,
@@ -21,24 +24,10 @@ struct Target {
     target: String,
 }
 
-#[derive(Debug, Clone)]
 pub enum HubResponse<T> {
     Void,
     Single(T),
-    Stream(SignalRStream<T>),
-}
-
-#[derive(Debug, Clone)]
-pub struct SignalRStream<T> {
-    v: T
-}
-
-impl<T> Stream for SignalRStream<T> {
-    type Item = T;
-
-    fn poll_next(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
-        todo!()
-    }
+    Stream(Pin<Box<dyn Stream<Item = T>>>),
 }
 
 impl<T> HubResponse<T> {
@@ -49,10 +38,10 @@ impl<T> HubResponse<T> {
         }
     }
 
-    pub fn unwrap_stream(self) -> SignalRStream<T> {
+    pub fn unwrap_stream(self) -> Pin<Box<dyn Stream<Item = T>>> {
         match self {
             HubResponse::Stream(stream) => stream,
-            _ => panic!()
+            _ => panic!(),
         }
     }
 }
@@ -136,9 +125,34 @@ impl HubInvoker {
                     _ => panic!(),
                 }
             }
+            MessageType::StreamInvocation => {
+                let target: Target = serde_json::from_str(text).unwrap();
+                match target.target.as_str() {
+                    "stream" => {
+                        let stream_invocation: StreamInvocation<StreamArgs> =
+                            serde_json::from_str(text).unwrap();
+                        let arguments = stream_invocation.arguments.unwrap();
+                        let invocation_id = stream_invocation.invocation_id;
+
+                        let result = self.hub.stream(arguments.0);
+
+                        let responses = result
+                            .zip(futures::stream::repeat(invocation_id.clone()))    
+                            .map(|(e, id)| StreamItem::new(id, e))
+                            .map(|si| serde_json::to_string(&si).unwrap());
+
+                        let responses = responses.chain(futures::stream::once(async {
+                            let completion : Completion<usize> = Completion::new(invocation_id, None, None);
+                            serde_json::to_string(&completion).unwrap() 
+                        }));
+
+                        HubResponse::Stream(Box::pin(responses))
+                    }
+                    _ => panic!(),
+                }
+            }
             MessageType::StreamItem => todo!(),
             MessageType::Completion => todo!(),
-            MessageType::StreamInvocation => todo!(),
             MessageType::CancelInvocation => todo!(),
             MessageType::Ping => todo!(),
             MessageType::Close => todo!(),
@@ -165,6 +179,14 @@ impl Hub {
             .take(count)
             .collect()
     }
+
+    pub fn stream(&self, count: usize) -> impl Stream<Item = usize> {
+        stream! {
+            for i in 0..count {
+                yield i;
+            }
+        }
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -175,3 +197,6 @@ struct AddArgs(u32, u32);
 
 #[derive(Deserialize, Clone, Debug)]
 struct SingleResultFailureArgs(u32, u32);
+
+#[derive(Deserialize, Clone, Debug)]
+struct StreamArgs(usize, #[serde(default)] ());

@@ -15,3 +15,4 @@ signalrs-core = {path = "../signalrs-core"}
 signalrs-error = {path = "../signalrs-error"}
 tokio = {version = "1", features = ["full"]}
 tokio-tungstenite = "0.16"
+async-stream = "0.3"

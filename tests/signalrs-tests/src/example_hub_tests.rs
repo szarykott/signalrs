@@ -1,8 +1,8 @@
+use futures::stream::StreamExt;
 use playground::example_hub;
 use serde_json;
 use signalrs_core::protocol;
 use tokio;
-use futures::stream::StreamExt;
 
 #[tokio::test]
 async fn example_hub_simple_invocation_succesfull() {
@@ -13,8 +13,6 @@ async fn example_hub_simple_invocation_succesfull() {
     let request = serde_json::to_string(&invocation).unwrap();
 
     let response = hub.invoke_text(&request).await;
-
-    dbg!(response.clone());
 
     let response = response.unwrap_single();
     let response: protocol::Completion<i32> = serde_json::from_str(&response).unwrap();
@@ -37,8 +35,6 @@ async fn example_hub_simple_invocation_failed() {
 
     let response = hub.invoke_text(&request).await;
 
-    dbg!(response.clone());
-
     let response = response.unwrap_single();
     let response: protocol::Completion<i32> = serde_json::from_str(&response).unwrap();
 
@@ -52,13 +48,14 @@ async fn example_hub_simple_invocation_failed() {
 async fn example_hub_batched_invocation() {
     let hub = example_hub::HubInvoker::new();
 
-    let invocation =
-        protocol::Invocation::new(Some("123".to_string()), "batched".to_string(), Some((5usize, ())));
+    let invocation = protocol::Invocation::new(
+        Some("123".to_string()),
+        "batched".to_string(),
+        Some((5usize, ())),
+    );
     let request = serde_json::to_string(&invocation).unwrap();
 
     let response = hub.invoke_text(&request).await;
-
-    dbg!(response.clone());
 
     let response = response.unwrap_single();
     let response: protocol::Completion<Vec<usize>> = serde_json::from_str(&response).unwrap();
@@ -73,8 +70,11 @@ async fn example_hub_batched_invocation() {
 async fn example_hub_stream_invocation() {
     let hub = example_hub::HubInvoker::new();
 
-    let invocation =
-        protocol::Invocation::new(Some("123".to_string()), "stream".to_string(), Some((3usize, ())));
+    let invocation = protocol::StreamInvocation::new(
+        "123".to_string(),
+        "stream".to_string(),
+        Some((3usize, ())),
+    );
     let request = serde_json::to_string(&invocation).unwrap();
 
     let response = hub.invoke_text(&request).await;

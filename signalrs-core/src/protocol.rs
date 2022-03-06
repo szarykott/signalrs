@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, __private::de::StrDeserializer};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{collections::HashMap, convert::From};
 
@@ -98,9 +98,23 @@ impl<A> Invocation<A> {
 pub struct StreamInvocation<A> {
     r#type: MessageType,
     headers: Option<HashMap<String, String>>,
-    id: String,
+    pub invocation_id: String,
     target: String,
-    arguments: A,
+    pub arguments: Option<A>,
+    stream_ids: Option<Vec<String>>,
+}
+
+impl<A> StreamInvocation<A> {
+    pub fn new(invocation_id: String, target: String, arguments: Option<A>) -> Self {
+        StreamInvocation {
+            r#type: MessageType::StreamInvocation,
+            headers: None,
+            invocation_id,
+            target,
+            arguments,
+            stream_ids: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
