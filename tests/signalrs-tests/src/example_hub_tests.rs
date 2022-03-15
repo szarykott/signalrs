@@ -126,7 +126,11 @@ async fn example_hub_stream_failure_invocation() {
     let expected_f1 = protocol::StreamItem::new("123".to_string(), 0usize);
     let expected_f2 = protocol::StreamItem::new("123".to_string(), 1usize);
     let expected_f3 = protocol::StreamItem::new("123".to_string(), 2usize);
-    let expected_completion = protocol::Completion::<usize>::new("123".to_string(), None, Some("Ran out of data!".to_string()));
+    let expected_completion = protocol::Completion::<usize>::new(
+        "123".to_string(),
+        None,
+        Some("Ran out of data!".to_string()),
+    );
 
     let actual_f1 = serde_json::from_str(&f1).unwrap();
     let actual_f2 = serde_json::from_str(&f2).unwrap();
