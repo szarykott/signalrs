@@ -2,7 +2,7 @@ use async_stream::stream;
 use futures::{future, Stream, StreamExt};
 use serde;
 use serde::Deserialize;
-use signalrs_core::{protocol::*, extensions::StreamExtR};
+use signalrs_core::{extensions::StreamExtR, protocol::*};
 use std::{
     fmt::Debug,
     pin::Pin,
@@ -141,14 +141,16 @@ impl HubInvoker {
                             .map(|(e, id)| StreamItem::new(id, e))
                             .map(|si| serde_json::to_string(&si).unwrap())
                             .chain(futures::stream::once(async {
-                                let completion: Completion<usize> = Completion::new(invocation_id, None, None);
+                                let completion: Completion<usize> =
+                                    Completion::new(invocation_id, None, None);
                                 serde_json::to_string(&completion).unwrap()
                             }));
 
                         HubResponse::Stream(Box::pin(responses))
                     }
                     "stream_failure" => {
-                        let stream_invocation: StreamInvocation<StreamFailureArgs> = serde_json::from_str(text).unwrap();
+                        let stream_invocation: StreamInvocation<StreamFailureArgs> =
+                            serde_json::from_str(text).unwrap();
                         let arguments = stream_invocation.arguments.unwrap();
                         let invocation_id = stream_invocation.invocation_id;
 
@@ -160,16 +162,20 @@ impl HubInvoker {
                             .map(|(e, id)| -> Result<StreamItem<usize>, Completion<()>> {
                                 match e {
                                     Ok(item) => Ok(StreamItem::new(id, item)),
-                                    Err(e) => Err(Completion::<()>::new(id, None, Some(e)))
+                                    Err(e) => Err(Completion::<()>::new(id, None, Some(e))),
                                 }
                             })
-                            .chain_if(|e| e.is_ok(), futures::stream::once(async {
-                                let r : Result<StreamItem<usize>, Completion<()>> = Err(Completion::<()>::new(invocation_id, None, None));
-                                r
-                            }))
+                            .chain_if(
+                                |e| e.is_ok(),
+                                futures::stream::once(async {
+                                    let r: Result<StreamItem<usize>, Completion<()>> =
+                                        Err(Completion::<()>::new(invocation_id, None, None));
+                                    r
+                                }),
+                            )
                             .map(|e| match e {
                                 Ok(si) => serde_json::to_string(&si).unwrap(),
-                                Err(cmp) => serde_json::to_string(&cmp).unwrap()
+                                Err(cmp) => serde_json::to_string(&cmp).unwrap(),
                             });
 
                         HubResponse::Stream(Box::pin(responses))
