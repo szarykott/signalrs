@@ -1,5 +1,5 @@
 use async_stream::stream;
-use futures::{future, Stream, StreamExt};
+use futures::{Stream, StreamExt};
 use serde;
 use serde::Deserialize;
 use signalrs_core::{extensions::StreamExtR, protocol::*};
@@ -27,7 +27,7 @@ struct Target {
 pub enum HubResponse<T> {
     Void,
     Single(T),
-    Stream(Pin<Box<dyn Stream<Item = T>>>),
+    Stream(Pin<Box<dyn Stream<Item = T> + Send>>),
 }
 
 impl<T> HubResponse<T> {

@@ -3,4 +3,5 @@
 
 mod connection;
 pub mod extensions;
+pub mod negotiate;
 pub mod protocol;

@@ -1,4 +1,4 @@
-use std::{vec, error::Error};
+use std::{error::Error, vec};
 
 use crate::example_hub::*;
 use futures::{sink::SinkExt, stream::StreamExt};
@@ -12,7 +12,7 @@ pub async fn run(mut invoker: HubInvoker) -> Result<(), Box<dyn std::error::Erro
         let _result = match is_negotiate(&mut tcp_stream).await {
             Ok(true) => handle_negotiate(&mut tcp_stream).await,
             Ok(false) => handle_websocket(tcp_stream, &mut invoker).await,
-            Err(_e) => todo!()
+            Err(_e) => todo!(),
         };
     }
 
@@ -24,7 +24,7 @@ async fn is_negotiate(tcp_stream: &mut TcpStream) -> Result<bool, Box<dyn Error>
 
     let mut buffer = vec![0u8; 256];
 
-    tcp_stream.peek(&mut buffer).await?;    
+    tcp_stream.peek(&mut buffer).await?;
 
     let line = String::from_utf8(buffer)?;
 
@@ -38,7 +38,10 @@ async fn handle_negotiate(tcp_stream: &mut TcpStream) -> Result<(), Box<dyn Erro
     Ok(())
 }
 
-async fn handle_websocket(tcp_stream: TcpStream, invoker: &mut HubInvoker) -> Result<(), Box<dyn Error>> {
+async fn handle_websocket(
+    tcp_stream: TcpStream,
+    invoker: &mut HubInvoker,
+) -> Result<(), Box<dyn Error>> {
     let (mut tx, mut rx) = tokio_tungstenite::accept_async(tcp_stream).await?.split();
 
     while let Some(Ok(msg)) = rx.next().await {
