@@ -5,7 +5,7 @@ use axum::{
         Extension,
     },
     http::{Method, StatusCode},
-    response::Json,
+    response::{IntoResponse, Json},
     routing::{get, get_service, post},
     Router,
 };
@@ -47,12 +47,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // ws_transport::run(example_hub::HubInvoker::new()).await
     let app = Router::new()
         .route("/", index)
-        .route("/chathub/negotiate", post(negotiate))
+        .route("/chathub/negotiate", post(negotiate).layer(cors))
         .route(
             "/chathub",
             get(ws_upgrade_handler).layer(Extension(invoker)),
         )
-        .layer(cors)
         .layer(TraceLayer::new_for_http());
 
     axum::Server::bind(&"0.0.0.0:8080".parse()?)
@@ -73,35 +72,54 @@ async fn negotiate() -> Json<NegotiateResponseV0> {
     })
 }
 
-async fn ws_upgrade_handler(ws: WebSocketUpgrade, Extension(invoker): Extension<Arc<HubInvoker>>) {
+async fn ws_upgrade_handler(
+    ws: WebSocketUpgrade,
+    Extension(invoker): Extension<Arc<HubInvoker>>,
+) -> impl IntoResponse {
     let f = |ws| ws_handler(ws, invoker);
-    ws.on_upgrade(f);
+    ws.on_upgrade(f)
 }
 
 async fn ws_handler(socket: WebSocket, invoker: Arc<HubInvoker>) {
     let (mut tx, mut rx) = socket.split();
 
-    // TODO: Handshake
+    if let Some(Ok(Message::Text(msg))) = rx.next().await {
+        let response = invoker.handshake(msg.as_str());
+        tx.send(Message::Text(response)).await.unwrap();
+    } else {
+        return;
+    }
 
-    while let Some(Ok(msg)) = rx.next().await {
-        match msg {
-            Message::Text(f) => {
-                dbg!(f.clone());
-                match invoker.invoke_text(&f).await {
-                    HubResponse::Void => { /* skip */ }
-                    HubResponse::Single(response) => {
-                        tx.send(Message::Text(response)).await.unwrap();
+    loop {
+        match rx.next().await {
+            Some(Ok(msg)) => {
+                dbg!(msg.clone());
+                match msg {
+                    Message::Text(f) => {
+                        match invoker.invoke_text(&f).await {
+                            HubResponse::Void => { /* skip */ }
+                            HubResponse::Single(response) => {
+                                tx.send(Message::Text(response)).await.unwrap();
+                            }
+                            HubResponse::Stream(_) => todo!(),
+                        }
                     }
-                    HubResponse::Stream(_) => todo!(),
-                }
+                    Message::Binary(f) => {
+                        let response = invoker.invoke_binary(&f).await;
+                        tx.send(Message::Binary(response)).await.unwrap();
+                    }
+                    Message::Ping(d) => tx.send(Message::Pong(d)).await.unwrap(),
+                    Message::Pong(_) => { /* ignore */ }
+                    Message::Close(_) => { /* ignore */ }
+                };
             }
-            Message::Binary(f) => {
-                let response = invoker.invoke_binary(&f).await;
-                tx.send(Message::Binary(response)).await.unwrap();
+            Some(Err(e)) => {
+                dbg!(e);
             }
-            Message::Ping(d) => tx.send(Message::Pong(d)).await.unwrap(),
-            Message::Pong(_) => { /* ignore */ }
-            Message::Close(_) => { /* ignore */ }
+            None => {
+                dbg!("None");
+                break;
+            }
         };
     }
 }

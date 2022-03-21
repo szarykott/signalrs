@@ -55,11 +55,35 @@ impl HubInvoker {
         }
     }
 
+    pub fn handshake(&self, input: &str) -> String {
+        let input = input.trim_end_matches("\u{001E}");
+
+        let request = serde_json::from_str::<HandshakeRequest>(&input);
+
+        let response = match request {
+            Ok(request) => {
+                if request.is_json() {
+                    HandshakeResponse::no_error()
+                } else {
+                    HandshakeResponse::error("Unsupported protocol")
+                }
+            }
+            Err(e) => HandshakeResponse::error(e),
+        };
+
+        match serde_json::to_string(&response) {
+            Ok(value) => format!("{}\u{001E}", value),
+            Err(e) => "serialization error".to_string(),
+        }
+    }
+
     pub async fn invoke_binary(&self, _data: &[u8]) -> Vec<u8> {
         vec![0, 1, 1]
     }
 
     pub async fn invoke_text(&self, text: &str) -> HubResponse<String> {
+        let text = text.trim_end_matches("\u{001E}");
+
         let message_type: Type = serde_json::from_str(text).unwrap();
 
         match message_type.message_type {
@@ -186,7 +210,7 @@ impl HubInvoker {
             MessageType::StreamItem => todo!(),
             MessageType::Completion => todo!(),
             MessageType::CancelInvocation => todo!(),
-            MessageType::Ping => todo!(),
+            MessageType::Ping => HubResponse::Void,
             MessageType::Close => todo!(),
             MessageType::Other => todo!(),
         }

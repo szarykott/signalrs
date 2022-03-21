@@ -9,6 +9,12 @@ pub struct HandshakeRequest {
     version: u8,
 }
 
+impl HandshakeRequest {
+    pub fn is_json(&self) -> bool {
+        self.protocol == "json"
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 /// Sent by the server as an acknowledgment of the previous `HandshakeRequest` message. Contains an error if the handshake failed.
 pub struct HandshakeResponse {
@@ -18,6 +24,12 @@ pub struct HandshakeResponse {
 impl HandshakeResponse {
     pub fn no_error() -> Self {
         HandshakeResponse { error: None }
+    }
+
+    pub fn error(reason: impl ToString) -> Self {
+        HandshakeResponse {
+            error: Some(reason.to_string()),
+        }
     }
 }
 
