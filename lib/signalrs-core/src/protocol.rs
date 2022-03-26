@@ -18,6 +18,7 @@ impl HandshakeRequest {
 #[derive(Debug, Serialize, Deserialize)]
 /// Sent by the server as an acknowledgment of the previous `HandshakeRequest` message. Contains an error if the handshake failed.
 pub struct HandshakeResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
 

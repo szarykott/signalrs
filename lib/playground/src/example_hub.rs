@@ -210,7 +210,11 @@ impl HubInvoker {
             MessageType::StreamItem => todo!(),
             MessageType::Completion => todo!(),
             MessageType::CancelInvocation => todo!(),
-            MessageType::Ping => HubResponse::Void,
+            MessageType::Ping => {
+                let ping = Ping::new();
+                let s = serde_json::to_string(&ping).unwrap();
+                HubResponse::Single(s)
+            },
             MessageType::Close => todo!(),
             MessageType::Other => todo!(),
         }

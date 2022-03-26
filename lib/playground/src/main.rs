@@ -98,6 +98,7 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<HubInvoker>) {
                         match invoker.invoke_text(&f).await {
                             HubResponse::Void => { /* skip */ }
                             HubResponse::Single(response) => {
+                                dbg!(response.clone());
                                 tx.send(Message::Text(response)).await.unwrap();
                             }
                             HubResponse::Stream(_) => todo!(),
@@ -105,6 +106,7 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<HubInvoker>) {
                     }
                     Message::Binary(f) => {
                         let response = invoker.invoke_binary(&f).await;
+                        dbg!(response.clone());
                         tx.send(Message::Binary(response)).await.unwrap();
                     }
                     Message::Ping(d) => tx.send(Message::Pong(d)).await.unwrap(),
