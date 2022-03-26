@@ -70,8 +70,9 @@ impl Close {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 /// Indicates a request to invoke a particular method (the Target) with provided Arguments on the remote endpoint.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Invocation<A> {
     r#type: MessageType,
     headers: Option<HashMap<String, String>>,
@@ -150,25 +151,26 @@ impl<I> StreamItem<I> {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
 /// Indicates a previous Invocation or StreamInvocation has completed.
 /// Contains an error if the invocation concluded with an error or the result of a non-streaming method invocation.
 /// The result will be absent for void methods.
 /// In case of streaming invocations no further StreamItem messages will be received.
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct Completion<R> {
     r#type: MessageType,
     headers: Option<HashMap<String, String>>,
-    id: String,
+    invocation_id: String,
     result: Option<R>,
     error: Option<String>,
 }
 
 impl<R> Completion<R> {
-    pub fn new(id: String, result: Option<R>, error: Option<String>) -> Self {
+    pub fn new(invocation_id: String, result: Option<R>, error: Option<String>) -> Self {
         Completion {
             r#type: MessageType::Completion,
             headers: None,
-            id,
+            invocation_id,
             result,
             error,
         }
