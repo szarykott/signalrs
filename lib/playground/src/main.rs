@@ -44,7 +44,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let invoker = Arc::new(HubInvoker::new());
 
-    // ws_transport::run(example_hub::HubInvoker::new()).await
     let app = Router::new()
         .route("/", index)
         .route("/chathub/negotiate", post(negotiate).layer(cors))
