@@ -7,7 +7,7 @@ var connection = new HubConnectionBuilder()
     .WithUrl("http://127.0.0.1:8080/chathub")
     .ConfigureLogging(options => {
         options.AddConsole();
-        options.AddFilter("Microsoft.AspNetCore.SignalR", LogLevel.Information);
+        options.AddFilter("Microsoft.AspNetCore.SignalR", LogLevel.Trace);
     })
     .Build();
 
@@ -51,6 +51,6 @@ while (true) {
 End:;
 
 async Task InvokeAdd(HubConnection connection) {
-    var response = await connection.InvokeAsync<int>("add", 1, 2);
+    var response = await connection.InvokeAsync<string>("add", 1, 2);
     Console.WriteLine($"'add' returned {response}");
 }

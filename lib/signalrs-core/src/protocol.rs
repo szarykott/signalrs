@@ -3,6 +3,7 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{collections::HashMap, convert::From};
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Sent by the client to agree on the message format.
 pub struct HandshakeRequest {
     protocol: String,
@@ -16,6 +17,7 @@ impl HandshakeRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Sent by the server as an acknowledgment of the previous `HandshakeRequest` message. Contains an error if the handshake failed.
 pub struct HandshakeResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -39,6 +41,7 @@ pub trait SignalRMessage {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Sent by either party to check if the connection is active.
 pub struct Ping {
     r#type: MessageType,
@@ -53,10 +56,13 @@ impl Ping {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Sent by the server when a connection is closed. Contains an error if the connection was closed because of an error.
 pub struct Close {
     r#type: MessageType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     allow_reconnect: Option<bool>,
 }
 
@@ -75,10 +81,14 @@ impl Close {
 #[serde(rename_all = "camelCase")]
 pub struct Invocation<A> {
     r#type: MessageType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<HashMap<String, String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     invocation_id: Option<String>,
     target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     arguments: Option<A>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     stream_ids: Option<Vec<String>>,
 }
 
@@ -108,13 +118,17 @@ impl<A> Invocation<A> {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Indicates a request to invoke a streaming method (the Target) with provided Arguments on the remote endpoint.
 pub struct StreamInvocation<A> {
     r#type: MessageType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<HashMap<String, String>>,
     pub invocation_id: String,
     target: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub arguments: Option<A>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     stream_ids: Option<Vec<String>>,
 }
 
@@ -132,11 +146,13 @@ impl<A> StreamInvocation<A> {
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 /// Indicates individual items of streamed response data from a previous `StreamInvocation` message.
 pub struct StreamItem<I> {
     r#type: MessageType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<HashMap<String, String>>,
-    id: String,
+    invocation_id: String,
     item: I,
 }
 
@@ -145,7 +161,7 @@ impl<I> StreamItem<I> {
         StreamItem {
             r#type: MessageType::StreamItem,
             headers: None,
-            id,
+            invocation_id: id,
             item,
         }
     }
@@ -159,9 +175,12 @@ impl<I> StreamItem<I> {
 #[serde(rename_all = "camelCase")]
 pub struct Completion<R> {
     r#type: MessageType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<HashMap<String, String>>,
     invocation_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     result: Option<R>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
 
@@ -178,11 +197,13 @@ impl<R> Completion<R> {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 /// Sent by the client to cancel a streaming invocation on the server.
 pub struct CancelInvocation {
     r#type: MessageType,
+    #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<HashMap<String, String>>,
-    id: String,
+    invocation_id: String,
 }
 
 impl CancelInvocation {
@@ -190,7 +211,7 @@ impl CancelInvocation {
         CancelInvocation {
             r#type: MessageType::CancelInvocation,
             headers: None,
-            id,
+            invocation_id: id,
         }
     }
 }
