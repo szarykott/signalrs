@@ -9,6 +9,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+const WEIRD_ENDING: &'static str = "\u{001E}";
+
 pub struct HubInvoker {
     hub: Hub,
 }
@@ -28,6 +30,13 @@ pub enum HubResponse<T> {
     Void,
     Single(T),
     Stream(Pin<Box<dyn Stream<Item = T> + Send>>),
+}
+
+impl HubResponse<String> {
+    pub fn single_string(value: String) -> HubResponse<String> {
+        let with_ending = value + WEIRD_ENDING;
+        HubResponse::Single(with_ending)
+    }
 }
 
 impl<T> HubResponse<T> {
@@ -78,7 +87,7 @@ impl HubInvoker {
     }
 
     pub async fn invoke_binary(&self, _data: &[u8]) -> Vec<u8> {
-        vec![0, 1, 1]
+        unimplemented!()
     }
 
     pub async fn invoke_text(&self, text: &str) -> HubResponse<String> {
@@ -90,6 +99,10 @@ impl HubInvoker {
             MessageType::Invocation => {
                 let target: Target = serde_json::from_str(text).unwrap();
                 match target.target.as_str() {
+                    "non_blocking" => {
+                        self.hub.non_blocking();
+                        HubResponse::Void
+                    }
                     "add" => {
                         let mut invocation: Invocation<AddArgs> =
                             serde_json::from_str(text).unwrap();
@@ -102,7 +115,9 @@ impl HubInvoker {
                             Some(id) => {
                                 let return_message =
                                     Completion::new(id.clone(), Some(result), None);
-                                HubResponse::Single(serde_json::to_string(&return_message).unwrap())
+                                HubResponse::single_string(
+                                    serde_json::to_string(&return_message).unwrap(),
+                                )
                             }
                             None => HubResponse::Void,
                         }
@@ -119,12 +134,16 @@ impl HubInvoker {
                             (Some(id), Ok(result)) => {
                                 let return_message =
                                     Completion::new(id.clone(), Some(result), None);
-                                HubResponse::Single(serde_json::to_string(&return_message).unwrap())
+                                HubResponse::single_string(
+                                    serde_json::to_string(&return_message).unwrap(),
+                                )
                             }
                             (Some(id), Err(e)) => {
                                 let return_message =
                                     Completion::<()>::new(id.clone(), None, Some(e));
-                                HubResponse::Single(serde_json::to_string(&return_message).unwrap())
+                                HubResponse::single_string(
+                                    serde_json::to_string(&return_message).unwrap(),
+                                )
                             }
                             _ => HubResponse::Void,
                         }
@@ -141,7 +160,9 @@ impl HubInvoker {
                             Some(id) => {
                                 let return_message =
                                     Completion::new(id.clone(), Some(result), None);
-                                HubResponse::Single(serde_json::to_string(&return_message).unwrap())
+                                HubResponse::single_string(
+                                    serde_json::to_string(&return_message).unwrap(),
+                                )
                             }
                             None => HubResponse::Void,
                         }
@@ -163,11 +184,11 @@ impl HubInvoker {
                         let responses = result
                             .zip(futures::stream::repeat(invocation_id.clone()))
                             .map(|(e, id)| StreamItem::new(id, e))
-                            .map(|si| serde_json::to_string(&si).unwrap())
+                            .map(|si| serde_json::to_string(&si).unwrap() + WEIRD_ENDING)
                             .chain(futures::stream::once(async {
                                 let completion: Completion<usize> =
                                     Completion::new(invocation_id, None, None);
-                                serde_json::to_string(&completion).unwrap()
+                                serde_json::to_string(&completion).unwrap() + WEIRD_ENDING
                             }));
 
                         HubResponse::Stream(Box::pin(responses))
@@ -198,8 +219,8 @@ impl HubInvoker {
                                 }),
                             )
                             .map(|e| match e {
-                                Ok(si) => serde_json::to_string(&si).unwrap(),
-                                Err(cmp) => serde_json::to_string(&cmp).unwrap(),
+                                Ok(si) => serde_json::to_string(&si).unwrap() + WEIRD_ENDING,
+                                Err(cmp) => serde_json::to_string(&cmp).unwrap() + WEIRD_ENDING,
                             });
 
                         HubResponse::Stream(Box::pin(responses))
@@ -213,8 +234,8 @@ impl HubInvoker {
             MessageType::Ping => {
                 let ping = Ping::new();
                 let s = serde_json::to_string(&ping).unwrap();
-                HubResponse::Single(s)
-            },
+                HubResponse::single_string(s)
+            }
             MessageType::Close => todo!(),
             MessageType::Other => todo!(),
         }
@@ -226,6 +247,10 @@ pub struct Hub {
 }
 
 impl Hub {
+    pub fn non_blocking(&self) {
+        // nothing
+    }
+
     pub fn add(&self, a: u32, b: u32) -> u32 {
         a + b
     }

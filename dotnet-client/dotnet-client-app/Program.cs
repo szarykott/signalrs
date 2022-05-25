@@ -2,55 +2,139 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using System.Collections.Generic;
 
 var connection = new HubConnectionBuilder()
     .WithUrl("http://127.0.0.1:8080/chathub")
-    .ConfigureLogging(options => {
+    .ConfigureLogging(options =>
+    {
         options.AddConsole();
-        options.AddFilter("Microsoft.AspNetCore.SignalR", LogLevel.Trace);
+        options.AddFilter("Microsoft.AspNetCore.SignalR", LogLevel.Information);
     })
     .Build();
 
-connection.Reconnected += _ => {
+connection.Reconnected += _ =>
+{
     Console.WriteLine("Connection restarted");
     return Task.CompletedTask;
 };
 
-connection.Closed += async (error) => {
+connection.Closed += async (error) =>
+{
     Console.WriteLine("Connection closed");
     await Task.Delay(TimeSpan.FromSeconds(10));
     await connection.StartAsync();
 };
 
-await connection.StartAsync();
+Connect:
+try
+{
+    if (connection.State == HubConnectionState.Disconnected)
+        await connection.StartAsync();
+}
+catch (Exception e)
+{
+    System.Console.WriteLine(e);
+    System.Console.WriteLine("Error while trying to connect. Click any key to retry ...");
+    Console.ReadKey();
+    goto Connect;
+}
 
-while (true) {
+while (true)
+{
     Console.WriteLine("Choose action:");
 
     Console.WriteLine("0 - close");
     Console.WriteLine("1 - invoke 'add'");
+    Console.WriteLine("2 - invoke 'single_result_failure'");
+    Console.WriteLine("3 - invoke 'batched'");
+    Console.WriteLine("4 - invoke 'stream'");
+    Console.WriteLine("5 - invoke 'non_blocking'");
+    Console.WriteLine("6 - invoke 'stream_failure'");
 
     var selection = Console.ReadLine();
 
-    try {
-        switch(selection) {
+    try
+    {
+        switch (selection)
+        {
             case "0":
                 goto End;
             case "1":
                 await InvokeAdd(connection);
                 break;
+            case "2":
+                await InvokeSingleResultFailure(connection);
+                break;
+            case "3":
+                await InvokeBatched(connection);
+                break;
+            case "4":
+                await InvokeStream(connection);
+                break;
+            case "5":
+                await InvokeNonBlocking(connection);
+                break;
+            case "6":
+                await InvokeStreamFailure(connection);
+                break;
             default:
                 break;
         }
     }
-    catch (Exception e) {
+    catch (Exception e)
+    {
         Console.WriteLine(e);
+        goto Connect;
     }
 }
 
 End:;
 
-async Task InvokeAdd(HubConnection connection) {
-    var response = await connection.InvokeAsync<string>("add", 1, 2);
+async Task InvokeAdd(HubConnection connection)
+{
+    var response = await connection.InvokeAsync<int>("add", 1, 2);
     Console.WriteLine($"'add' returned {response}");
+}
+
+async Task InvokeSingleResultFailure(HubConnection connection)
+{
+    var response = await connection.InvokeAsync<int>("single_result_failure", 1, 2);
+    Console.WriteLine($"'single_result_failure' returned {response}");
+}
+
+async Task InvokeBatched(HubConnection connection)
+{
+    var response = await connection.InvokeAsync<List<int>>("batched", 3);
+    Console.WriteLine($"'single_result_failure' returned {string.Join(",", response)}");
+}
+
+async Task InvokeStream(HubConnection connection)
+{
+    var response = connection.StreamAsync<int>("stream", 5);
+
+    await foreach (var i in response)
+    {
+        System.Console.WriteLine($"'stream' next item : {i}");
+    }
+
+    Console.WriteLine($"'stream' finished");
+}
+
+async Task InvokeNonBlocking(HubConnection connection)
+{
+    await connection.SendAsync("non_blocking");
+    Console.WriteLine($"'non_blocking' returned");
+}
+
+async Task InvokeStreamFailure(HubConnection connection)
+{
+    var response = connection.StreamAsync<int>("stream_failure", 5);
+
+    await foreach (var i in response)
+    {
+        System.Console.WriteLine($"'stream' next item : {i}");
+    }
+
+    Console.WriteLine($"'stream' finished");
 }

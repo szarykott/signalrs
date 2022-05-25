@@ -9,12 +9,18 @@ use axum::{
     routing::{get, get_service, post},
     Router,
 };
-use futures::{sink::SinkExt, stream::StreamExt};
+use futures::{
+    select,
+    sink::SinkExt,
+    stream::{SelectAll, StreamExt},
+    FutureExt,
+};
 use playground::example_hub::{HubInvoker, HubResponse};
 use signalrs_core::negotiate::{NegotiateResponseV0, TransportSpec};
 use std::sync::Arc;
+use tokio;
 use tower_http::{
-    cors::{CorsLayer, Origin},
+    cors::{AllowOrigin, CorsLayer},
     services::fs::ServeFile,
     trace::TraceLayer,
 };
@@ -30,7 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ])
         .allow_credentials(true)
         .allow_methods(vec![Method::POST])
-        .allow_origin(Origin::exact("http://localhost:8080".parse()?));
+        .allow_origin(AllowOrigin::exact("http://localhost:8080".parse()?));
 
     let index = get_service(ServeFile::new(
         "/home/radoslaw/Programowanie/signalrs/web/index.html",
@@ -89,38 +95,52 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<HubInvoker>) {
         return;
     }
 
+    let mut text_streams = SelectAll::new();
+
     loop {
-        match rx.next().await {
-            Some(Ok(msg)) => {
-                dbg!(msg.clone());
-                match msg {
-                    Message::Text(f) => {
-                        match invoker.invoke_text(&f).await {
-                            HubResponse::Void => { /* skip */ }
-                            HubResponse::Single(response) => {
-                                dbg!(response.clone());
-                                tx.send(Message::Text(response)).await.unwrap();
+        select! {
+            si = text_streams.next() => match si {
+                Some(msg) => {
+                    let msg : String = msg;
+                    dbg!(msg.clone());
+                    tx.send(Message::Text(msg)).await.unwrap();
+                },
+                None => { /* panik */ },
+            },
+            nm = rx.next().fuse() => match nm {
+                Some(Ok(msg)) => {
+                    dbg!(msg.clone());
+                    match msg {
+                        Message::Text(f) => {
+                            match invoker.invoke_text(&f).await {
+                                HubResponse::Void => { /* skip */ }
+                                HubResponse::Single(response) => {
+                                    dbg!(response.clone());
+                                    tx.send(Message::Text(response)).await.unwrap();
+                                }
+                                HubResponse::Stream(a) => {
+                                    text_streams.push(a);
+                                }
                             }
-                            HubResponse::Stream(_) => todo!(),
                         }
-                    }
-                    Message::Binary(f) => {
-                        let response = invoker.invoke_binary(&f).await;
-                        dbg!(response.clone());
-                        tx.send(Message::Binary(response)).await.unwrap();
-                    }
-                    Message::Ping(d) => tx.send(Message::Pong(d)).await.unwrap(),
-                    Message::Pong(_) => { /* ignore */ }
-                    Message::Close(_) => { /* ignore */ }
-                };
+                        Message::Binary(f) => {
+                            let response = invoker.invoke_binary(&f).await;
+                            dbg!(response.clone());
+                            tx.send(Message::Binary(response)).await.unwrap();
+                        }
+                        Message::Ping(d) => tx.send(Message::Pong(d)).await.unwrap(),
+                        Message::Pong(_) => { /* ignore */ }
+                        Message::Close(_) => { /* ignore */ }
+                    };
+                }
+                Some(Err(e)) => {
+                    dbg!(e);
+                }
+                None => {
+                    dbg!("None");
+                    break;
+                }
             }
-            Some(Err(e)) => {
-                dbg!(e);
-            }
-            None => {
-                dbg!("None");
-                break;
-            }
-        };
+        }
     }
 }
