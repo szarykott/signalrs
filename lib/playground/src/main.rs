@@ -9,13 +9,8 @@ use axum::{
     routing::{get, get_service, post},
     Router,
 };
-use futures::{
-    select,
-    sink::SinkExt,
-    stream::{SelectAll, StreamExt},
-    FutureExt,
-};
-use playground::example_hub::{HubInvoker, HubResponse};
+use futures::{select, sink::SinkExt, stream::StreamExt, FutureExt};
+use playground::example_hub::HubInvoker;
 use signalrs_core::negotiate::{NegotiateResponseV0, TransportSpec};
 use std::sync::Arc;
 use tokio;
@@ -95,11 +90,13 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<HubInvoker>) {
         return;
     }
 
-    let mut text_streams = SelectAll::new();
+    let (itx, irx) = flume::bounded(1000);
+    let itx = itx.into_sink();
+    let mut irx = irx.into_stream(); // TODO: verify memory leak bug fixed!
 
     loop {
         select! {
-            si = text_streams.next() => match si {
+            si = irx.next() => match si {
                 Some(msg) => {
                     let msg : String = msg;
                     dbg!(msg.clone());
@@ -112,16 +109,11 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<HubInvoker>) {
                     dbg!(msg.clone());
                     match msg {
                         Message::Text(f) => {
-                            match invoker.invoke_text(&f).await {
-                                HubResponse::Void => { /* skip */ }
-                                HubResponse::Single(response) => {
-                                    dbg!(response.clone());
-                                    tx.send(Message::Text(response)).await.unwrap();
-                                }
-                                HubResponse::Stream(a) => {
-                                    text_streams.push(a);
-                                }
-                            }
+                            let invoker = Arc::clone(&invoker);
+                            let itx = itx.clone();
+                            tokio::spawn(async move {
+                                invoker.invoke_text(f, itx).await;
+                            });
                         }
                         Message::Binary(f) => {
                             let response = invoker.invoke_binary(&f).await;

@@ -1,18 +1,16 @@
+use async_mutex::Mutex;
 use async_stream::stream;
-use futures::{Stream, StreamExt};
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use serde;
 use serde::Deserialize;
 use signalrs_core::{extensions::StreamExtR, protocol::*};
-use std::{
-    fmt::Debug,
-    pin::Pin,
-    sync::{Arc, Mutex},
-};
+use std::{any::Any, collections::HashMap, fmt::Debug, sync::Arc};
 
 const WEIRD_ENDING: &'static str = "\u{001E}";
 
 pub struct HubInvoker {
-    hub: Hub,
+    hub: Arc<Hub>,
+    ongoing_invocations: Arc<Mutex<HashMap<String, Box<dyn Any + Send>>>>,
 }
 
 #[derive(Deserialize, Debug, Clone, Copy)]
@@ -26,41 +24,13 @@ struct Target {
     target: String,
 }
 
-pub enum HubResponse<T> {
-    Void,
-    Single(T),
-    Stream(Pin<Box<dyn Stream<Item = T> + Send>>),
-}
-
-impl HubResponse<String> {
-    pub fn single_string(value: String) -> HubResponse<String> {
-        let with_ending = value + WEIRD_ENDING;
-        HubResponse::Single(with_ending)
-    }
-}
-
-impl<T> HubResponse<T> {
-    pub fn unwrap_single(self) -> T {
-        match self {
-            HubResponse::Single(v) => v,
-            _ => panic!(),
-        }
-    }
-
-    pub fn unwrap_stream(self) -> Pin<Box<dyn Stream<Item = T>>> {
-        match self {
-            HubResponse::Stream(stream) => stream,
-            _ => panic!(),
-        }
-    }
-}
-
 impl HubInvoker {
     pub fn new() -> Self {
         HubInvoker {
-            hub: Hub {
+            hub: Arc::new(Hub {
                 _counter: Arc::new(Mutex::new(0)),
-            },
+            }),
+            ongoing_invocations: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -90,41 +60,45 @@ impl HubInvoker {
         unimplemented!()
     }
 
-    pub async fn invoke_text(&self, text: &str) -> HubResponse<String> {
-        let text = text.trim_end_matches("\u{001E}");
+    pub async fn invoke_text<T>(&self, text: String, mut output: T)
+    where
+        T: Sink<String> + Send + 'static + Unpin,
+        <T as Sink<String>>::Error: Debug,
+    {
+        let text = text.trim_end_matches("\u{001E}").to_owned();
 
-        let message_type: Type = serde_json::from_str(text).unwrap();
+        let message_type: Type = serde_json::from_str(&text).unwrap();
 
         match message_type.message_type {
             MessageType::Invocation => {
-                let target: Target = serde_json::from_str(text).unwrap();
+                let target: Target = serde_json::from_str(&text).unwrap();
                 match target.target.as_str() {
                     "non_blocking" => {
                         self.hub.non_blocking();
-                        HubResponse::Void
                     }
                     "add" => {
                         let mut invocation: Invocation<AddArgs> =
-                            serde_json::from_str(text).unwrap();
-
+                            serde_json::from_str(&text).unwrap();
                         let arguments = invocation.arguments().unwrap();
-
                         let result = self.hub.add(arguments.0, arguments.1);
-
                         match invocation.id() {
                             Some(id) => {
                                 let return_message =
                                     Completion::new(id.clone(), Some(result), None);
-                                HubResponse::single_string(
-                                    serde_json::to_string(&return_message).unwrap(),
-                                )
+                                output
+                                    .send(
+                                        serde_json::to_string(&return_message).unwrap()
+                                            + WEIRD_ENDING,
+                                    )
+                                    .await
+                                    .unwrap();
                             }
-                            None => HubResponse::Void,
+                            None => {}
                         }
                     }
                     "single_result_failure" => {
                         let mut invocation: Invocation<SingleResultFailureArgs> =
-                            serde_json::from_str(text).unwrap();
+                            serde_json::from_str(&text).unwrap();
 
                         let arguments = invocation.arguments().unwrap();
 
@@ -134,23 +108,31 @@ impl HubInvoker {
                             (Some(id), Ok(result)) => {
                                 let return_message =
                                     Completion::new(id.clone(), Some(result), None);
-                                HubResponse::single_string(
-                                    serde_json::to_string(&return_message).unwrap(),
-                                )
+                                output
+                                    .send(
+                                        serde_json::to_string(&return_message).unwrap()
+                                            + WEIRD_ENDING,
+                                    )
+                                    .await
+                                    .unwrap();
                             }
                             (Some(id), Err(e)) => {
                                 let return_message =
                                     Completion::<()>::new(id.clone(), None, Some(e));
-                                HubResponse::single_string(
-                                    serde_json::to_string(&return_message).unwrap(),
-                                )
+                                output
+                                    .send(
+                                        serde_json::to_string(&return_message).unwrap()
+                                            + WEIRD_ENDING,
+                                    )
+                                    .await
+                                    .unwrap();
                             }
-                            _ => HubResponse::Void,
+                            _ => {}
                         }
                     }
                     "batched" => {
                         let mut invocation: Invocation<BatchedArgs> =
-                            serde_json::from_str(text).unwrap();
+                            serde_json::from_str(&text).unwrap();
 
                         let arguments = invocation.arguments().unwrap();
 
@@ -160,24 +142,29 @@ impl HubInvoker {
                             Some(id) => {
                                 let return_message =
                                     Completion::new(id.clone(), Some(result), None);
-                                HubResponse::single_string(
-                                    serde_json::to_string(&return_message).unwrap(),
-                                )
+                                output
+                                    .send(
+                                        serde_json::to_string(&return_message).unwrap()
+                                            + WEIRD_ENDING,
+                                    )
+                                    .await
+                                    .unwrap();
                             }
-                            None => HubResponse::Void,
+                            None => {}
                         }
                     }
                     _ => panic!(),
                 }
             }
             MessageType::StreamInvocation => {
-                let target: Target = serde_json::from_str(text).unwrap();
+                let target: Target = serde_json::from_str(&text).unwrap();
                 match target.target.as_str() {
                     "stream" => {
                         let stream_invocation: StreamInvocation<StreamArgs> =
-                            serde_json::from_str(text).unwrap();
+                            serde_json::from_str(&text).unwrap();
                         let arguments = stream_invocation.arguments.unwrap();
                         let invocation_id = stream_invocation.invocation_id;
+                        let iidc = invocation_id.clone();
 
                         let result = self.hub.stream(arguments.0);
 
@@ -191,13 +178,27 @@ impl HubInvoker {
                                 serde_json::to_string(&completion).unwrap() + WEIRD_ENDING
                             }));
 
-                        HubResponse::Stream(Box::pin(responses))
+                        let mut responses = Box::pin(responses);
+                        let invocations = Arc::clone(&self.ongoing_invocations);
+
+                        let iidc2 = iidc.clone();
+                        let ongoing = tokio::spawn(async move {
+                            while let Some(item) = responses.next().await {
+                                output.send(item).await.unwrap();
+                            }
+                            let mut invocations = invocations.lock().await;
+                            (*invocations).remove(&iidc2);
+                        });
+
+                        let mut guard = self.ongoing_invocations.lock().await;
+                        (*guard).insert(iidc, Box::new(ongoing));
                     }
                     "stream_failure" => {
                         let stream_invocation: StreamInvocation<StreamFailureArgs> =
-                            serde_json::from_str(text).unwrap();
+                            serde_json::from_str(&text).unwrap();
                         let arguments = stream_invocation.arguments.unwrap();
                         let invocation_id = stream_invocation.invocation_id;
+                        let iidc = invocation_id.clone();
 
                         let result = self.hub.stream_failure(arguments.0);
 
@@ -223,7 +224,20 @@ impl HubInvoker {
                                 Err(cmp) => serde_json::to_string(&cmp).unwrap() + WEIRD_ENDING,
                             });
 
-                        HubResponse::Stream(Box::pin(responses))
+                        let mut responses = Box::pin(responses);
+                        let invocations = Arc::clone(&self.ongoing_invocations);
+
+                        let iidc2 = iidc.clone();
+                        let ongoing = tokio::spawn(async move {
+                            while let Some(item) = responses.next().await {
+                                output.send(item).await.unwrap();
+                            }
+                            let mut invocations = invocations.lock().await;
+                            (*invocations).remove(&iidc2);
+                        });
+
+                        let mut guard = self.ongoing_invocations.lock().await;
+                        (*guard).insert(iidc, Box::new(ongoing));
                     }
                     _ => panic!(),
                 }
@@ -234,7 +248,7 @@ impl HubInvoker {
             MessageType::Ping => {
                 let ping = Ping::new();
                 let s = serde_json::to_string(&ping).unwrap();
-                HubResponse::single_string(s)
+                output.send(s + WEIRD_ENDING).await.unwrap();
             }
             MessageType::Close => todo!(),
             MessageType::Other => todo!(),
