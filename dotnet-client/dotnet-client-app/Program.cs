@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
+using System.Threading;
 
 var connection = new HubConnectionBuilder()
     .WithUrl("http://127.0.0.1:8080/chathub")
@@ -51,6 +52,8 @@ while (true)
     Console.WriteLine("4 - invoke 'stream'");
     Console.WriteLine("5 - invoke 'non_blocking'");
     Console.WriteLine("6 - invoke 'stream_failure'");
+    Console.WriteLine("7 - invoke 'stream' cancel");
+    Console.WriteLine("8 - invoke 'add_stream'");
 
     var selection = Console.ReadLine();
 
@@ -77,6 +80,12 @@ while (true)
                 break;
             case "6":
                 await InvokeStreamFailure(connection);
+                break;
+            case "7":
+                await InvokeStreamCancel(connection);
+                break;
+            case "8":
+                await InvokeClientSideStreaming(connection);
                 break;
             default:
                 break;
@@ -137,4 +146,33 @@ async Task InvokeStreamFailure(HubConnection connection)
     }
 
     Console.WriteLine($"'stream' finished");
+}
+
+async Task InvokeStreamCancel(HubConnection connection)
+{
+    var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+
+    var response = connection.StreamAsync<int>("stream", 5, cts.Token);
+
+    await foreach (var i in response)
+    {
+        System.Console.WriteLine($"'stream' next item : {i}");
+    }
+
+    Console.WriteLine($"'stream' finished");
+}
+
+async Task InvokeClientSideStreaming(HubConnection connection)
+{
+    var response = await connection.InvokeAsync<int>("add_stream", LinesAsync(), LinesAsync());
+    Console.WriteLine($"'add_stream' finished with {response}");
+}
+
+async IAsyncEnumerable<int> LinesAsync()
+{
+    for (var i = 0; i < 5; i++)
+    {
+        await Task.Delay(1000);
+        yield return i;
+    }
 }

@@ -89,7 +89,7 @@ pub struct Invocation<A> {
     #[serde(skip_serializing_if = "Option::is_none")]
     arguments: Option<A>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    stream_ids: Option<Vec<String>>,
+    pub stream_ids: Option<Vec<String>>,
 }
 
 impl<A> Invocation<A> {
@@ -153,7 +153,7 @@ pub struct StreamItem<I> {
     #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<HashMap<String, String>>,
     invocation_id: String,
-    item: I,
+    pub item: I,
 }
 
 impl<I> StreamItem<I> {
@@ -203,7 +203,7 @@ pub struct CancelInvocation {
     r#type: MessageType,
     #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<HashMap<String, String>>,
-    invocation_id: String,
+    pub invocation_id: String,
 }
 
 impl CancelInvocation {
