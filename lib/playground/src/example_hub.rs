@@ -1,5 +1,5 @@
-use async_mutex::Mutex;
 use async_stream::stream;
+use async_trait;
 use flume::r#async::SendSink;
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use serde;
@@ -7,6 +7,7 @@ use serde::Deserialize;
 use signalrs_core::{extensions::StreamExtR, protocol::*};
 use std::{any::Any, collections::HashMap, fmt::Debug, sync::Arc};
 use tokio;
+use tokio::sync::Mutex;
 
 const WEIRD_ENDING: &'static str = "\u{001E}";
 
@@ -78,7 +79,7 @@ impl HubInvoker {
     pub async fn invoke_text<T>(&self, text: String, mut output: T)
     where
         T: Sink<String> + Send + 'static + Unpin + Clone,
-        <T as Sink<String>>::Error: Debug,
+        <T as Sink<String>>::Error: Debug + std::error::Error,
     {
         let text = text.trim_end_matches("\u{001E}").to_owned();
 
@@ -94,20 +95,13 @@ impl HubInvoker {
                     "add" => {
                         let mut invocation: Invocation<AddArgs> =
                             serde_json::from_str(&text).unwrap();
+
                         let arguments = invocation.arguments().unwrap();
+
                         let result = self.hub.add(arguments.0, arguments.1);
+
                         match invocation.id() {
-                            Some(id) => {
-                                let return_message =
-                                    Completion::new(id.clone(), Some(result), None);
-                                output
-                                    .send(
-                                        serde_json::to_string(&return_message).unwrap()
-                                            + WEIRD_ENDING,
-                                    )
-                                    .await
-                                    .unwrap();
-                            }
+                            Some(id) => result.forward(id.clone(), output).await.unwrap(),
                             None => {}
                         }
                     }
@@ -120,27 +114,8 @@ impl HubInvoker {
                         let result = self.hub.single_result_failure(arguments.0, arguments.1);
 
                         match (invocation.id(), result) {
-                            (Some(id), Ok(result)) => {
-                                let return_message =
-                                    Completion::new(id.clone(), Some(result), None);
-                                output
-                                    .send(
-                                        serde_json::to_string(&return_message).unwrap()
-                                            + WEIRD_ENDING,
-                                    )
-                                    .await
-                                    .unwrap();
-                            }
-                            (Some(id), Err(e)) => {
-                                let return_message =
-                                    Completion::<()>::new(id.clone(), None, Some(e));
-                                output
-                                    .send(
-                                        serde_json::to_string(&return_message).unwrap()
-                                            + WEIRD_ENDING,
-                                    )
-                                    .await
-                                    .unwrap();
+                            (Some(id), value) => {
+                                value.forward(id.clone(), output).await.unwrap();
                             }
                             _ => {}
                         }
@@ -155,15 +130,7 @@ impl HubInvoker {
 
                         match invocation.id() {
                             Some(id) => {
-                                let return_message =
-                                    Completion::new(id.clone(), Some(result), None);
-                                output
-                                    .send(
-                                        serde_json::to_string(&return_message).unwrap()
-                                            + WEIRD_ENDING,
-                                    )
-                                    .await
-                                    .unwrap();
+                                result.forward(id.clone(), output).await.unwrap();
                             }
                             None => {}
                         }
@@ -185,17 +152,15 @@ impl HubInvoker {
                             }
 
                             let hub = Arc::clone(&self.hub);
-                            let mut out = output.clone();
+                            let out = output.clone();
                             let inv_id = inv_id.clone();
 
                             tokio::spawn(async move {
-                                let result = hub.add_stream(rx.into_stream()).await;
-                                let completion = Completion::new(inv_id, Some(result), None);
-                                out.send(
-                                    serde_json::to_string(&completion).unwrap() + WEIRD_ENDING,
-                                )
-                                .await
-                                .unwrap();
+                                hub.add_stream(rx.into_stream())
+                                    .await
+                                    .forward(inv_id, out)
+                                    .await
+                                    .unwrap();
                             });
                         }
                     }
@@ -335,6 +300,78 @@ impl HubInvoker {
     }
 }
 
+#[async_trait::async_trait]
+pub trait HubResponse {
+    async fn forward<T>(
+        self,
+        invocation_id: String,
+        sink: T,
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        T: Sink<String> + Send,
+        <T as Sink<String>>::Error: std::error::Error + 'static;
+}
+
+#[async_trait::async_trait]
+impl HubResponse for i32 {
+    async fn forward<T>(
+        self,
+        invocation_id: String,
+        sink: T,
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        T: Sink<String> + Send,
+        <T as Sink<String>>::Error: std::error::Error + 'static,
+    {
+        let completion = Completion::new(invocation_id, Some(self), None);
+        Box::pin(sink)
+            .send(serde_json::to_string(&completion)? + WEIRD_ENDING)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+    }
+}
+
+#[async_trait::async_trait]
+impl HubResponse for Vec<usize> {
+    async fn forward<T>(
+        self,
+        invocation_id: String,
+        sink: T,
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        T: Sink<String> + Send,
+        <T as Sink<String>>::Error: std::error::Error + 'static,
+    {
+        let completion = Completion::new(invocation_id, Some(self), None);
+        Box::pin(sink)
+            .send(serde_json::to_string(&completion)? + WEIRD_ENDING)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+    }
+}
+
+#[async_trait::async_trait]
+impl HubResponse for Result<u32, String> {
+    async fn forward<T>(
+        self,
+        invocation_id: String,
+        sink: T,
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        T: Sink<String> + Send,
+        <T as Sink<String>>::Error: std::error::Error + 'static,
+    {
+        let completion = match self {
+            Ok(ok) => Completion::new(invocation_id, Some(ok), None),
+            Err(err) => Completion::new(invocation_id, None, Some(err)),
+        };
+        Box::pin(sink)
+            .send(serde_json::to_string(&completion)? + WEIRD_ENDING)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+    }
+}
+
 pub struct Hub {
     _counter: Arc<Mutex<usize>>,
 }
@@ -344,18 +381,18 @@ impl Hub {
         // nothing
     }
 
-    pub fn add(&self, a: u32, b: u32) -> u32 {
+    pub fn add(&self, a: i32, b: i32) -> impl HubResponse {
         a + b
     }
 
-    pub fn single_result_failure(&self, _a: u32, _b: u32) -> Result<u32, String> {
+    pub fn single_result_failure(&self, _a: u32, _b: u32) -> impl HubResponse {
         Err("An error!".to_string())
     }
 
-    pub fn batched(&self, count: usize) -> Vec<usize> {
+    pub fn batched(&self, count: usize) -> impl HubResponse {
         std::iter::successors(Some(0usize), |p| Some(p + 1))
             .take(count)
-            .collect()
+            .collect::<Vec<usize>>()
     }
 
     pub fn stream(&self, count: usize) -> impl Stream<Item = usize> {
@@ -378,8 +415,8 @@ impl Hub {
         }
     }
 
-    pub async fn add_stream(&self, input: impl Stream<Item = i32>) -> i32 {
-        input.collect::<Vec<i32>>().await.into_iter().sum()
+    pub async fn add_stream(&self, input: impl Stream<Item = i32>) -> impl HubResponse {
+        input.collect::<Vec<i32>>().await.into_iter().sum::<i32>()
     }
 }
 
@@ -387,7 +424,7 @@ impl Hub {
 struct BatchedArgs(usize, #[serde(default)] ());
 
 #[derive(Deserialize, Clone, Debug)]
-struct AddArgs(u32, u32);
+struct AddArgs(i32, i32);
 
 #[derive(Deserialize, Clone, Debug)]
 struct SingleResultFailureArgs(u32, u32);

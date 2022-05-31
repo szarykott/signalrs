@@ -115,7 +115,7 @@ async Task InvokeSingleResultFailure(HubConnection connection)
 async Task InvokeBatched(HubConnection connection)
 {
     var response = await connection.InvokeAsync<List<int>>("batched", 3);
-    Console.WriteLine($"'single_result_failure' returned {string.Join(",", response)}");
+    Console.WriteLine($"'batched' returned {string.Join(",", response)}");
 }
 
 async Task InvokeStream(HubConnection connection)
