@@ -1,6 +1,6 @@
 use futures::{
     sink::Sink,
-    stream::{FuturesUnordered, SelectAll, Stream, StreamExt, StreamFuture},
+    stream::{SelectAll, Stream, StreamExt},
 };
 use signalrs_core::{extensions::BoxExt, protocol::*};
 use signalrs_error::SignalRError;

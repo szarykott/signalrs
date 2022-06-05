@@ -3,6 +3,7 @@ use async_trait;
 use flume::r#async::{RecvStream, SendSink};
 use futures::{Future, Sink, SinkExt, Stream, StreamExt};
 use serde;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use signalrs_core::{extensions::StreamExtR, protocol::*};
 use std::{any::Any, collections::HashMap, fmt::Debug, sync::Arc};
@@ -87,9 +88,7 @@ impl HubInvoker {
     {
         let text = text.trim_end_matches("\u{001E}").to_owned();
 
-        let message_type: Type = serde_json::from_str(&text)?;
-
-        match message_type.message_type {
+        match serde_json::from_str::<Type>(&text)?.message_type {
             MessageType::Invocation => {
                 let target: Target = serde_json::from_str(&text)?;
                 match target.target.as_str() {
@@ -124,34 +123,18 @@ impl HubInvoker {
                         .await
                     }
                     "add_stream" => {
-                        let invocation: Invocation<EmptyArgs> = serde_json::from_str(&text)?;
-                        let inv_id = invocation.id().clone().unwrap();
-                        if let Some(e) = invocation.stream_ids {
-                            let (tx, rx) = flume::bounded(100);
-
-                            for incoming_stream in e {
-                                let mut guard = self.client_streams_mapping.lock().await;
-                                let cs = ClientStream {
-                                    to_function: "add_stream".to_string(),
-                                    sink: Box::new(tx.clone().into_sink()),
-                                };
-                                (*guard).insert(incoming_stream.clone(), cs);
-                            }
-
-                            let hub = Arc::clone(&self.hub);
-                            let out = output.clone();
-                            let inv_id = inv_id.clone();
-
-                            tokio::spawn(async move {
-                                hub.add_stream(rx.into_stream())
-                                    .await
-                                    .forward(inv_id, out)
-                                    .await
-                                    .unwrap();
-                            });
-                        }
-
-                        Ok(())
+                        let hub = Arc::clone(&self.hub);
+                        Self::text_client_stream_invocation(
+                            "add_stream",
+                            text,
+                            move |_: EmptyArgs, b| {
+                                let result = async move { hub.add_stream(b).await };
+                                HubFutureWrapper(result)
+                            },
+                            output,
+                            Arc::clone(&self.client_streams_mapping),
+                        )
+                        .await
                     }
                     _ => panic!(),
                 }
@@ -188,11 +171,7 @@ impl HubInvoker {
 
                 if let Some(cs) = cs {
                     match cs.to_function.as_str() {
-                        "add_stream" => {
-                            let item: StreamItem<i32> = serde_json::from_str(&text)?;
-                            let sink = cs.sink.downcast_mut::<SendSink<i32>>().unwrap();
-                            sink.send(item.item).await?;
-                        }
+                        "add_stream" => Self::text_stream_item::<i32>(&text, cs).await?,
                         _ => panic!(),
                     }
                 }
@@ -298,24 +277,25 @@ impl HubInvoker {
         Ok(())
     }
 
-    async fn text_client_stream_invocation<'de, T, R, F, S, Q, I>(
+    async fn text_client_stream_invocation<'de, T, R, F, S, I>(
         function_name: &'static str,
-        text: &'de str,
+        text: String,
         hub_function: F,
         output: S,
         client_streams_mapping: Arc<Mutex<HashMap<String, ClientStream>>>,
     ) -> Result<(), Box<dyn std::error::Error>>
     where
-        T: Deserialize<'de>,
-        F: FnOnce(T, RecvStream<'static, I>) -> R,
+        T: DeserializeOwned + Send + 'static,
+        F: FnOnce(T, RecvStream<'static, I>) -> R + Send + 'static,
         I: 'static + Send,
-        R: HubResponse + 'static,
+        R: HubResponse + Send + 'static,
         S: Sink<String> + Send + 'static + Unpin + Clone,
         <S as Sink<String>>::Error: Debug + std::error::Error,
     {
-        let invocation: Invocation<T> = serde_json::from_str(&text)?;
+        let mut invocation: Invocation<T> = serde_json::from_str(text.as_str())?;
 
         let invocation_id = invocation.id().clone().unwrap();
+        let arguments = invocation.arguments().unwrap();
 
         if let Some(e) = invocation.stream_ids {
             let (tx, rx) = flume::bounded(100);
@@ -331,15 +311,30 @@ impl HubInvoker {
 
             let output_clone = output.clone();
             let invocation_id_clone = invocation_id.clone();
-            let arguments = invocation.arguments().unwrap();
 
             tokio::spawn(async move {
-                hub_function(arguments, rx.into_stream())
+                let hub_function_future = hub_function(arguments, rx.into_stream());
+
+                hub_function_future
                     .forward(invocation_id_clone, output_clone)
                     .await
                     .unwrap();
             });
         }
+
+        Ok(())
+    }
+
+    async fn text_stream_item<'de, T>(
+        text: &'de str,
+        cs: &mut ClientStream,
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        T: Deserialize<'de> + 'static,
+    {
+        let item: StreamItem<T> = serde_json::from_str(&text)?;
+        let sink = cs.sink.downcast_mut::<SendSink<T>>().unwrap();
+        sink.send(item.item).await?;
 
         Ok(())
     }
@@ -569,6 +564,28 @@ where
         }
 
         Ok(())
+    }
+}
+
+struct HubFutureWrapper<T>(T);
+
+#[async_trait::async_trait]
+impl<F, O> HubResponse for HubFutureWrapper<F>
+where
+    F: Future<Output = O> + Send,
+    O: HubResponse + Send,
+{
+    async fn forward<T>(
+        self,
+        invocation_id: String,
+        sink: T,
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        T: Sink<String> + Send,
+        <T as Sink<String>>::Error: std::error::Error + 'static,
+    {
+        let result = self.0.await;
+        result.forward(invocation_id, sink).await
     }
 }
 

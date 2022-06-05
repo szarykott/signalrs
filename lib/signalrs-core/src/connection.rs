@@ -1,9 +1,6 @@
-use crate::{
-    extensions::BoxExt,
-    protocol::{self, SignalRMessage},
-};
+use crate::protocol::SignalRMessage;
 use futures::{
-    sink::{Sink, SinkExt},
+    sink::Sink,
     stream::{Stream, StreamExt},
 };
 use signalrs_error::SignalRError;

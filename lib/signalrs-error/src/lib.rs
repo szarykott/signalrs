@@ -5,7 +5,7 @@ pub enum SignalRError {
 }
 
 impl std::fmt::Display for SignalRError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         todo!()
     }
 }
@@ -25,7 +25,7 @@ impl std::error::Error for SignalRError {
 }
 
 impl serde::de::Error for SignalRError {
-    fn custom<T>(msg: T) -> Self
+    fn custom<T>(_msg: T) -> Self
     where
         T: std::fmt::Display,
     {
