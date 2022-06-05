@@ -6,10 +6,11 @@ version = "0.1.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-trait = "0.1"
 futures = "0.3"
-rmp-serde = "0.15"
+pin-project = "1"
+rmp-serde = "1.1"
 serde = {version = "1.0", features = ["derive"]}
 serde_json = "1.0"
 serde_repr = "0.1"
 signalrs-error = {path = "../signalrs-error"}
-pin-project = "1"

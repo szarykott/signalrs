@@ -238,7 +238,7 @@ impl MessageFormat {
     {
         match self {
             MessageFormat::Json => serde_json::from_slice(bytes).unwrap(), // TODO: Fixme
-            MessageFormat::MessagePack => rmp_serde::from_read_ref(bytes).unwrap(), // TODO: Fixm
+            MessageFormat::MessagePack => rmp_serde::from_slice(bytes).unwrap(), // TODO: Fixm
         }
     }
 
@@ -315,4 +315,22 @@ impl<T> SignalRMessage for Completion<T> {
     fn message_type(&self) -> MessageType {
         self.r#type
     }
+}
+
+// TODO: Try to unify
+#[derive(Deserialize, Debug, Clone)]
+pub struct Id {
+    #[serde(rename = "invocationId")]
+    pub invocation_id: String,
+}
+
+#[derive(Deserialize, Debug, Clone, Copy)]
+pub struct Type {
+    #[serde(rename = "type")]
+    pub message_type: MessageType,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct Target {
+    pub target: String,
 }
