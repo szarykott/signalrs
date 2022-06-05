@@ -1,20 +1,31 @@
-use futures::stream::StreamExt;
+#![allow(unused_imports)]
+use futures::{
+    sink::Sink,
+    stream::{Stream, StreamExt},
+};
 use playground::example_hub;
-use serde_json;
 use signalrs_core::protocol;
-use tokio;
+
+const WEIRD_ENDING: &str = "\u{001E}";
 
 #[tokio::test]
 async fn example_hub_simple_invocation_succesfull() {
     let hub = example_hub::HubInvoker::new();
 
-    let invocation =
-        protocol::Invocation::new(Some("123".to_string()), "add".to_string(), Some((1, 2)));
+    let invocation = protocol::Invocation::new(
+        Some("123".to_string()),
+        "add".to_string(),
+        Some((1i32, 2i32)),
+    );
     let request = serde_json::to_string(&invocation).unwrap();
 
-    let response = hub.invoke_text(&request).await;
+    let (tx, rx) = flume::bounded(1);
 
-    let response = response.unwrap_single();
+    hub.invoke_text(request, tx.into_sink().clone())
+        .await
+        .unwrap();
+
+    let response = rx.recv().unwrap().strip_record_separator();
     let response: protocol::Completion<i32> = serde_json::from_str(&response).unwrap();
 
     let expected_response = protocol::Completion::new("123".to_string(), Some(3), None);
@@ -29,13 +40,15 @@ async fn example_hub_simple_invocation_failed() {
     let invocation = protocol::Invocation::new(
         Some("123".to_string()),
         "single_result_failure".to_string(),
-        Some((1, 2)),
+        Some((1i32, 2i32)),
     );
     let request = serde_json::to_string(&invocation).unwrap();
 
-    let response = hub.invoke_text(&request).await;
+    let (tx, rx) = flume::bounded(1);
 
-    let response = response.unwrap_single();
+    hub.invoke_text(request, tx.into_sink()).await.unwrap();
+
+    let response = rx.recv().unwrap().strip_record_separator();
     let response: protocol::Completion<i32> = serde_json::from_str(&response).unwrap();
 
     let expected_response =
@@ -55,9 +68,11 @@ async fn example_hub_batched_invocation() {
     );
     let request = serde_json::to_string(&invocation).unwrap();
 
-    let response = hub.invoke_text(&request).await;
+    let (tx, rx) = flume::bounded(1);
 
-    let response = response.unwrap_single();
+    hub.invoke_text(request, tx.into_sink()).await.unwrap();
+
+    let response = rx.recv().unwrap().strip_record_separator();
     let response: protocol::Completion<Vec<usize>> = serde_json::from_str(&response).unwrap();
 
     let expected_response =
@@ -77,13 +92,16 @@ async fn example_hub_stream_invocation() {
     );
     let request = serde_json::to_string(&invocation).unwrap();
 
-    let response = hub.invoke_text(&request).await;
+    let (tx, rx) = flume::bounded(10);
 
-    let mut response = response.unwrap_stream();
-    let f1 = response.next().await.unwrap();
-    let f2 = response.next().await.unwrap();
-    let f3 = response.next().await.unwrap();
-    let completion = response.next().await.unwrap();
+    hub.invoke_text(request, tx.into_sink()).await.unwrap();
+
+    let mut response = rx.into_stream();
+
+    let f1 = response.next().await.unwrap().strip_record_separator();
+    let f2 = response.next().await.unwrap().strip_record_separator();
+    let f3 = response.next().await.unwrap().strip_record_separator();
+    let completion = response.next().await.unwrap().strip_record_separator();
     let none = response.next().await;
 
     let expected_f1 = protocol::StreamItem::new("123".to_string(), 0usize);
@@ -114,13 +132,15 @@ async fn example_hub_stream_failure_invocation() {
     );
     let request = serde_json::to_string(&invocation).unwrap();
 
-    let response = hub.invoke_text(&request).await;
+    let (tx, rx) = flume::bounded(10);
 
-    let mut response = response.unwrap_stream();
-    let f1 = response.next().await.unwrap();
-    let f2 = response.next().await.unwrap();
-    let f3 = response.next().await.unwrap();
-    let completion = response.next().await.unwrap();
+    hub.invoke_text(request, tx.into_sink()).await.unwrap();
+
+    let mut response = rx.into_stream();
+    let f1 = response.next().await.unwrap().strip_record_separator();
+    let f2 = response.next().await.unwrap().strip_record_separator();
+    let f3 = response.next().await.unwrap().strip_record_separator();
+    let completion = response.next().await.unwrap().strip_record_separator();
     let none = response.next().await;
 
     let expected_f1 = protocol::StreamItem::new("123".to_string(), 0usize);
@@ -142,4 +162,14 @@ async fn example_hub_stream_failure_invocation() {
     assert_eq!(expected_f3, actual_f3);
     assert_eq!(expected_completion, actual_completion);
     assert!(none.is_none());
+}
+
+trait StringExt {
+    fn strip_record_separator(self) -> String;
+}
+
+impl StringExt for String {
+    fn strip_record_separator(self) -> String {
+        self.trim_end_matches(WEIRD_ENDING).to_owned()
+    }
 }

@@ -13,7 +13,6 @@ use futures::{select, sink::SinkExt, stream::StreamExt, FutureExt};
 use playground::example_hub::HubInvoker;
 use signalrs_core::negotiate::{NegotiateResponseV0, TransportSpec};
 use std::sync::Arc;
-use tokio;
 use tower_http::{
     cors::{AllowOrigin, CorsLayer},
     services::fs::ServeFile,
@@ -112,7 +111,9 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<HubInvoker>) {
                             let invoker = Arc::clone(&invoker);
                             let itx = itx.clone();
                             tokio::spawn(async move {
-                                invoker.invoke_text(f, itx).await;
+                                if let Err(_e) = invoker.invoke_text(f, itx).await {
+                                    // TODO: log e?
+                                };
                             });
                         }
                         Message::Binary(f) => {

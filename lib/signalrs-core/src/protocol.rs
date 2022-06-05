@@ -55,6 +55,12 @@ impl Ping {
     }
 }
 
+impl Default for Ping {
+    fn default() -> Self {
+        Ping::new()
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Sent by the server when a connection is closed. Contains an error if the connection was closed because of an error.

@@ -10,7 +10,7 @@ use std::{any::Any, collections::HashMap, fmt::Debug, sync::Arc};
 use tokio;
 use tokio::sync::Mutex;
 
-const WEIRD_ENDING: &'static str = "\u{001E}";
+const WEIRD_ENDING: &str = "\u{001E}";
 
 pub struct HubInvoker {
     hub: Arc<Hub>,
@@ -41,6 +41,7 @@ struct Target {
 }
 
 impl HubInvoker {
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         HubInvoker {
             hub: Arc::new(Hub {
@@ -52,9 +53,9 @@ impl HubInvoker {
     }
 
     pub fn handshake(&self, input: &str) -> String {
-        let input = input.trim_end_matches("\u{001E}");
+        let input = input.trim_end_matches(WEIRD_ENDING);
 
-        let request = serde_json::from_str::<HandshakeRequest>(&input);
+        let request = serde_json::from_str::<HandshakeRequest>(input);
 
         let response = match request {
             Ok(request) => {
@@ -68,8 +69,8 @@ impl HubInvoker {
         };
 
         match serde_json::to_string(&response) {
-            Ok(value) => format!("{}\u{001E}", value),
-            Err(e) => "serialization error".to_string(),
+            Ok(value) => format!("{}{}", value, WEIRD_ENDING),
+            Err(e) => e.to_string(),
         }
     }
 
@@ -86,7 +87,7 @@ impl HubInvoker {
         T: Sink<String> + Send + 'static + Unpin + Clone,
         <T as Sink<String>>::Error: Debug + std::error::Error,
     {
-        let text = text.trim_end_matches("\u{001E}").to_owned();
+        let text = text.trim_end_matches(WEIRD_ENDING).to_owned();
 
         match serde_json::from_str::<Type>(&text)?.message_type {
             MessageType::Invocation => {
@@ -126,7 +127,7 @@ impl HubInvoker {
                         let hub = Arc::clone(&self.hub);
                         Self::text_client_stream_invocation(
                             "add_stream",
-                            text,
+                            &text,
                             move |_: EmptyArgs, b| {
                                 let result = async move { hub.add_stream(b).await };
                                 HubFutureWrapper(result)
@@ -233,11 +234,8 @@ impl HubInvoker {
 
         let result = hub_function(arguments);
 
-        match (invocation.id(), result) {
-            (Some(id), value) => {
-                value.forward(id.clone(), output).await?;
-            }
-            _ => {}
+        if let Some(id) = invocation.id() {
+            result.forward(id.clone(), output).await?;
         }
 
         Ok(())
@@ -256,7 +254,7 @@ impl HubInvoker {
         S: Sink<String> + Send + 'static + Unpin + Clone,
         <S as Sink<String>>::Error: Debug + std::error::Error,
     {
-        let stream_invocation: StreamInvocation<T> = serde_json::from_str(&text)?;
+        let stream_invocation: StreamInvocation<T> = serde_json::from_str(text)?;
 
         let arguments = stream_invocation.arguments.unwrap();
         let invocation_id = stream_invocation.invocation_id;
@@ -279,7 +277,7 @@ impl HubInvoker {
 
     async fn text_client_stream_invocation<'de, T, R, F, S, I>(
         function_name: &'static str,
-        text: String,
+        text: &'de str,
         hub_function: F,
         output: S,
         client_streams_mapping: Arc<Mutex<HashMap<String, ClientStream>>>,
@@ -292,7 +290,7 @@ impl HubInvoker {
         S: Sink<String> + Send + 'static + Unpin + Clone,
         <S as Sink<String>>::Error: Debug + std::error::Error,
     {
-        let mut invocation: Invocation<T> = serde_json::from_str(text.as_str())?;
+        let mut invocation: Invocation<T> = serde_json::from_str(text)?;
 
         let invocation_id = invocation.id().clone().unwrap();
         let arguments = invocation.arguments().unwrap();
@@ -332,7 +330,7 @@ impl HubInvoker {
     where
         T: Deserialize<'de> + 'static,
     {
-        let item: StreamItem<T> = serde_json::from_str(&text)?;
+        let item: StreamItem<T> = serde_json::from_str(text)?;
         let sink = cs.sink.downcast_mut::<SendSink<T>>().unwrap();
         sink.send(item.item).await?;
 
