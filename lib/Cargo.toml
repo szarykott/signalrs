@@ -3,6 +3,7 @@
 members = [
     "signalrs-core",
     "signalrs-error",
+    "signalrs-macros",
     "tests/signalrs-tests",
     "playground"
 ]
