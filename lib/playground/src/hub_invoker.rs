@@ -4,7 +4,14 @@ use serde;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use signalrs_core::{hub_response::*, protocol::*};
-use std::{any::Any, collections::{HashMap, HashSet}, fmt::Debug, sync::Arc, pin::Pin};
+use signalrs_macros::signalr_fn;
+use std::{
+    any::Any,
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    pin::Pin,
+    sync::Arc,
+};
 use tokio;
 use tokio::sync::Mutex;
 
@@ -60,18 +67,16 @@ where
         &self,
         text: String,
         mut output: Out,
-    ) -> Result<(), Box<dyn std::error::Error>>
-    {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let text = text.trim_end_matches(WEIRD_ENDING).to_owned();
 
         match serde_json::from_str::<Type>(&text)?.message_type {
-            MessageType::Invocation
-            | MessageType::StreamInvocation => {
+            MessageType::Invocation | MessageType::StreamInvocation => {
                 let target = serde_json::from_str::<Target>(&text)?.target;
                 if let Some(method) = self.hub.methods.get(&target) {
                     let hub = Arc::clone(&self.hub.hub);
                     (method.action)(hub, text, output).await?;
-                } 
+                }
 
                 Ok(())
             }
@@ -82,8 +87,9 @@ where
                 let cs = (*guard).get_mut(&message.invocation_id);
 
                 if let Some(cs) = cs {
-                    match cs.to_function.as_str() {
-                        _ => panic!(),
+                    if let Some(method) = self.hub.methods.get(&cs.to_function) {
+                        let hub = Arc::clone(&self.hub.hub);
+                        (method.action)(hub, text, output).await?;
                     }
                 }
 
@@ -133,7 +139,6 @@ pub struct HubDescriptor<Hub, Out> {
 }
 
 pub struct MethodDescriptor<Hub, Out> {
-    name: &'static str,
     action: Box<
         dyn Fn(
             Arc<Hub>,
@@ -146,6 +151,7 @@ pub struct MethodDescriptor<Hub, Out> {
 pub struct DaHub;
 
 impl DaHub {
+    #[signalr_fn]
     pub fn do_it(&self, arg: i32) -> impl HubResponse {
         arg * arg
     }
@@ -156,15 +162,16 @@ where
     Out: Sink<String> + Send + 'static + Unpin + Clone,
     <Out as Sink<String>>::Error: Debug + std::error::Error,
 {
-    MethodDescriptor {
-        name: "do_it",
-        action: Box::new(|hub, text, output| {
-            Box::pin(text_invocation(text, move |arg| hub.do_it(arg), output))
-        }),
-    }
+    // MethodDescriptor {
+    //     action: Box::new(|hub, text, output| {
+    //         Box::pin(text_invocation(text, move |arg| hub.do_it(arg), output))
+    //     }),
+    // }
+
+    todo!()
 }
 
-async fn text_invocation<'de, T, R, F, S>(
+async fn text_invocation<T, R, F, S>(
     text: String,
     hub_function: F,
     output: S,
