@@ -1,8 +1,8 @@
 use flume::r#async::{RecvStream, SendSink};
 use futures::{Future, Sink, SinkExt};
-use serde;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
+use serde::{self, __private::de};
 use signalrs_core::{hub_response::*, protocol::*};
 use signalrs_macros::signalr_fn;
 use std::{
@@ -138,7 +138,22 @@ pub struct HubDescriptor<Hub, Out> {
     methods: HashMap<String, MethodDescriptor<Hub, Out>>,
 }
 
+impl<Hub, Out> HubDescriptor<Hub, Out> {
+    pub fn new(hub: Hub) -> Self {
+        HubDescriptor {
+            hub: Arc::new(hub),
+            methods: HashMap::new(),
+        }
+    }
+
+    pub fn method(mut self, descriptor: MethodDescriptor<Hub, Out>) -> Self {
+        self.methods.insert(descriptor.name.to_owned(), descriptor);
+        self
+    }
+}
+
 pub struct MethodDescriptor<Hub, Out> {
+    name: &'static str,
     action: Box<
         dyn Fn(
             Arc<Hub>,
