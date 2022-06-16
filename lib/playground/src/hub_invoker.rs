@@ -1,19 +1,10 @@
 use flume::r#async::{RecvStream, SendSink};
 use futures::{Future, Sink, SinkExt};
-use serde::de::DeserializeOwned;
-use serde::Deserialize;
-use serde::{self, __private::de};
+use serde::{self, de::DeserializeOwned, Deserialize};
 use signalrs_core::{hub_response::*, protocol::*};
-use signalrs_macros::signalr_fn;
-use std::{
-    any::Any,
-    collections::{HashMap, HashSet},
-    fmt::Debug,
-    pin::Pin,
-    sync::Arc,
-};
-use tokio;
-use tokio::sync::Mutex;
+use signalrs_macros::signalr_hub;
+use std::{any::Any, collections::HashMap, fmt::Debug, pin::Pin, sync::Arc};
+use tokio::{self, sync::Mutex};
 
 const WEIRD_ENDING: &str = "\u{001E}";
 
@@ -166,7 +157,6 @@ pub struct MethodDescriptor<Hub, Out> {
 pub struct DaHub;
 
 impl DaHub {
-    #[signalr_fn]
     pub fn do_it(&self, arg: i32) -> impl HubResponse {
         arg * arg
     }
