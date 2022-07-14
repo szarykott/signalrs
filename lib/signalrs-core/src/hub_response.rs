@@ -9,6 +9,12 @@ use serde::Serialize;
 
 const WEIRD_ENDING: &str = "\u{001E}";
 
+#[derive(Debug)]
+pub enum SignalRResponse<R> {
+    Completion(Completion<R>),
+    StreamItem(StreamItem<R>),
+}
+
 #[async_trait::async_trait]
 pub trait HubResponse {
     async fn forward<T>(
@@ -17,7 +23,7 @@ pub trait HubResponse {
         sink: T,
     ) -> Result<(), Box<dyn std::error::Error>>
     where
-        T: Sink<String> + Send,
+        T: Sink<String> + Send + Sized,
         <T as Sink<String>>::Error: std::error::Error + 'static;
 }
 
@@ -35,6 +41,21 @@ impl HubResponse for () {
         Ok(())
     }
 }
+
+// idea!
+// pub trait HubResponse {
+//     async fn prepare_stream(
+//         self,
+//         invocation_id: String,
+//     ) -> impl Stream<Item = String>
+
+//
+// pub trait HubResponseExt : HubResponse {
+//
+// tu walnąć forward, wtedy HubResponse jest object safe o ile Stream będzie konkretną implementacją
+//
+//
+//
 
 macro_rules! impl_hub_response {
     ($($type:ty),+) => {

@@ -26,8 +26,8 @@ pub fn signalr_hub(_args: CompilerTokenStream, input: CompilerTokenStream) -> Co
 
     let impl_block = parse_macro_input!(input as ItemImpl);
 
-    let struct_self_type = impl_block.self_ty;
-    let methods = generate_method_descriptors(impl_block.items);
+    let struct_self_type = *impl_block.self_ty;
+    let methods = generate_method_descriptors(&struct_self_type, impl_block.items);
 
     CompilerTokenStream::from(quote! {
         #original_input
@@ -38,14 +38,14 @@ pub fn signalr_hub(_args: CompilerTokenStream, input: CompilerTokenStream) -> Co
     })
 }
 
-fn generate_method_descriptors(items: Vec<ImplItem>) -> MacroTokenStream {
+fn generate_method_descriptors(self_type: &Type, items: Vec<ImplItem>) -> MacroTokenStream {
     let mut output = MacroTokenStream::new();
 
     for item in items {
         match item {
             ImplItem::Method(method) => {
                 if is_hub_method(&method) {
-                    output.extend(generate_method_descriptor(method));
+                    output.extend(generate_method_descriptor(self_type, method));
                 }
             }
             _ => {}
@@ -94,10 +94,35 @@ fn is_hub_response_type(method: &ImplItemMethod) -> bool {
     false
 }
 
-fn generate_method_descriptor(method: ImplItemMethod) -> MacroTokenStream {
+fn generate_method_descriptor(self_type: &Type, method: ImplItemMethod) -> MacroTokenStream {
     let method_name = format_ident!("{}_descriptor", method.sig.ident);
+    let args = method.sig.inputs;
 
     quote! {
-        pub fn #method_name() {}
+        pub fn #method_name<Out>(#args) -> signalrs_core::descriptor::MethodDescriptor<#self_type, Out>
+        where
+            Out: futures::sink::Sink<String> + std::marker::Send + 'static + Unpin + Clone,
+            <Out as futures::sink::Sink<String>>::Error: std::fmt::Debug + std::error::Error,
+        {
+            MethodDescriptor::new(
+                Box::new(|hub, text, output| {
+                    Box::pin(text_invocation(text, move |arg| hub.do_it(arg), output))
+                })
+            )
+        }
     }
 }
+
+// pub fn do_it_descriptor<Out>() -> MethodDescriptor<DaHub, Out>
+// where
+//     Out: Sink<String> + Send + 'static + Unpin + Clone,
+//     <Out as Sink<String>>::Error: Debug + std::error::Error,
+// {
+//     // MethodDescriptor {
+//     //     action: Box::new(|hub, text, output| {
+//     //         Box::pin(text_invocation(text, move |arg| hub.do_it(arg), output))
+//     //     }),
+//     // }
+
+//     todo!()
+// }

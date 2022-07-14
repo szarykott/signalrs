@@ -1,8 +1,11 @@
 use flume::r#async::{RecvStream, SendSink};
 use futures::{Future, Sink, SinkExt};
 use serde::{self, de::DeserializeOwned, Deserialize};
-use signalrs_core::{hub_response::*, protocol::*};
-use signalrs_macros::signalr_hub;
+use signalrs_core::{
+    descriptor::{self, *},
+    hub_response::*,
+    protocol::*,
+};
 use std::{any::Any, collections::HashMap, fmt::Debug, pin::Pin, sync::Arc};
 use tokio::{self, sync::Mutex};
 
@@ -66,10 +69,9 @@ where
                 let target = serde_json::from_str::<Target>(&text)?.target;
                 if let Some(method) = self.hub.methods.get(&target) {
                     let hub = Arc::clone(&self.hub.hub);
-                    (method.action)(hub, text, output).await?;
+                    // (method.action)(hub, text, output).await?;
+                    todo!()
                 }
-
-                Ok(())
             }
             MessageType::StreamItem => {
                 let message: Id = serde_json::from_str(&text)?;
@@ -80,11 +82,10 @@ where
                 if let Some(cs) = cs {
                     if let Some(method) = self.hub.methods.get(&cs.to_function) {
                         let hub = Arc::clone(&self.hub.hub);
-                        (method.action)(hub, text, output).await?;
+                        // (method.action)(hub, text, output).await?;
+                        todo!()
                     }
                 }
-
-                Ok(())
             }
             MessageType::Completion => {
                 let message: Id = serde_json::from_str(&text)?;
@@ -95,8 +96,6 @@ where
                 if let Some(cs) = cs {
                     drop(cs); // should terminate sender
                 }
-
-                Ok(())
             }
             MessageType::CancelInvocation => {
                 let message: CancelInvocation = serde_json::from_str(&text)?;
@@ -106,52 +105,21 @@ where
                     Some(handle) => handle.abort(),
                     None => { /* all good */ }
                 };
-
-                Ok(())
             }
             MessageType::Ping => {
                 let ping = Ping::new();
                 let s = serde_json::to_string(&ping)?;
                 output.send(s + WEIRD_ENDING).await?;
-                Ok(())
             }
             MessageType::Close => todo!(),
             MessageType::Other => {
                 /* panik or kalm? */
                 todo!()
             }
-        }
+        };
+
+        Ok(())
     }
-}
-
-pub struct HubDescriptor<Hub, Out> {
-    hub: Arc<Hub>,
-    methods: HashMap<String, MethodDescriptor<Hub, Out>>,
-}
-
-impl<Hub, Out> HubDescriptor<Hub, Out> {
-    pub fn new(hub: Hub) -> Self {
-        HubDescriptor {
-            hub: Arc::new(hub),
-            methods: HashMap::new(),
-        }
-    }
-
-    pub fn method(mut self, descriptor: MethodDescriptor<Hub, Out>) -> Self {
-        self.methods.insert(descriptor.name.to_owned(), descriptor);
-        self
-    }
-}
-
-pub struct MethodDescriptor<Hub, Out> {
-    name: &'static str,
-    action: Box<
-        dyn Fn(
-            Arc<Hub>,
-            String,
-            Out,
-        ) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn std::error::Error>>>>>,
-    >,
 }
 
 pub struct DaHub;
@@ -160,21 +128,24 @@ impl DaHub {
     pub fn do_it(&self, arg: i32) -> impl HubResponse {
         arg * arg
     }
+
+    pub fn do_it2(&self, arg: i32) -> impl HubResponse {
+        arg * arg
+    }
+
+    pub fn do_it3(&self, arg: i32) -> impl HubResponse {
+        arg * arg
+    }
 }
 
-pub fn do_it_descriptor<Out>() -> MethodDescriptor<DaHub, Out>
-where
-    Out: Sink<String> + Send + 'static + Unpin + Clone,
-    <Out as Sink<String>>::Error: Debug + std::error::Error,
-{
-    // MethodDescriptor {
-    //     action: Box::new(|hub, text, output| {
-    //         Box::pin(text_invocation(text, move |arg| hub.do_it(arg), output))
-    //     }),
-    // }
+#[derive(Deserialize)]
+struct DoItArgs(i32);
 
-    todo!()
-}
+#[derive(Deserialize)]
+struct DoItArgs2(i32);
+
+#[derive(Deserialize)]
+struct DoItArgs3(i32);
 
 async fn text_invocation<T, R, F, S>(
     text: String,

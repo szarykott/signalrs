@@ -3,10 +3,10 @@ use signalrs_macros::{describe, signalr_hub};
 
 pub struct Test;
 
-#[signalr_hub]
+// #[signalr_hub]
 #[describe]
 impl Test {
-    pub fn number() -> impl HubResponse {
+    pub fn number(self) -> impl HubResponse {
         1
     }
 }

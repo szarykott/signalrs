@@ -36,10 +36,6 @@ impl HandshakeResponse {
     }
 }
 
-pub trait SignalRMessage {
-    fn message_type(&self) -> MessageType;
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Sent by either party to check if the connection is active.
@@ -278,42 +274,6 @@ impl From<u8> for MessageType {
             7 => MessageType::Close,
             _ => MessageType::Other,
         }
-    }
-}
-
-macro_rules! singalr_message {
-    ($($t:ty),*) => {
-        $(impl SignalRMessage for $t {
-            fn message_type(&self) -> MessageType {
-                self.r#type
-            }
-        })*
-    };
-}
-
-singalr_message![Ping, CancelInvocation, Close];
-
-impl<T> SignalRMessage for Invocation<T> {
-    fn message_type(&self) -> MessageType {
-        self.r#type
-    }
-}
-
-impl<T> SignalRMessage for StreamInvocation<T> {
-    fn message_type(&self) -> MessageType {
-        self.r#type
-    }
-}
-
-impl<T> SignalRMessage for StreamItem<T> {
-    fn message_type(&self) -> MessageType {
-        self.r#type
-    }
-}
-
-impl<T> SignalRMessage for Completion<T> {
-    fn message_type(&self) -> MessageType {
-        self.r#type
     }
 }
 
