@@ -1,10 +1,11 @@
-use crate::{extensions::StreamExtR, protocol::*};
+use crate::{error::SignalRError, extensions::StreamExtR, protocol::*};
 use async_trait;
 use futures::{
     sink::{Sink, SinkExt},
     stream::{Stream, StreamExt},
-    Future,
+    Future, FutureExt,
 };
+use pin_project::pin_project;
 use serde::Serialize;
 
 const WEIRD_ENDING: &str = "\u{001E}";
@@ -17,23 +18,14 @@ pub enum SignalRResponse<R> {
 
 #[async_trait::async_trait]
 pub trait HubResponse {
-    async fn forward<T>(
-        self,
-        invocation_id: String,
-        sink: T,
-    ) -> Result<(), Box<dyn std::error::Error>>
+    async fn forward<T>(self, invocation_id: String, sink: T) -> Result<(), SignalRError>
     where
-        T: Sink<String> + Send + Sized,
-        <T as Sink<String>>::Error: std::error::Error + 'static;
+        T: Sink<String, Error = SignalRError> + Send;
 }
 
 #[async_trait::async_trait]
 impl HubResponse for () {
-    async fn forward<T>(
-        self,
-        _invocation_id: String,
-        _sink: T,
-    ) -> Result<(), Box<dyn std::error::Error>>
+    async fn forward<T>(self, _invocation_id: String, _sink: T) -> Result<(), SignalRError>
     where
         T: Sink<String> + Send,
         <T as Sink<String>>::Error: std::error::Error + 'static,
@@ -41,21 +33,6 @@ impl HubResponse for () {
         Ok(())
     }
 }
-
-// idea!
-// pub trait HubResponse {
-//     async fn prepare_stream(
-//         self,
-//         invocation_id: String,
-//     ) -> impl Stream<Item = String>
-
-//
-// pub trait HubResponseExt : HubResponse {
-//
-// tu walnąć forward, wtedy HubResponse jest object safe o ile Stream będzie konkretną implementacją
-//
-//
-//
 
 macro_rules! impl_hub_response {
     ($($type:ty),+) => {
@@ -66,16 +43,14 @@ macro_rules! impl_hub_response {
                 self,
                 invocation_id: String,
                 sink: T,
-            ) -> Result<(), Box<dyn std::error::Error>>
+            ) -> Result<(), SignalRError>
             where
-                T: Sink<String> + Send,
-                <T as Sink<String>>::Error: std::error::Error + 'static,
+                T: Sink<String, Error = SignalRError> + Send,
             {
                 let completion = Completion::new(invocation_id, Some(self), None);
                 Box::pin(sink)
                     .send(serde_json::to_string(&completion)? + WEIRD_ENDING)
                     .await
-                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
             }
         }
     )*
@@ -93,23 +68,13 @@ impl<R> HubResponse for Vec<R>
 where
     R: HubResponse + Send + Serialize,
 {
-    async fn forward<T>(
-        self,
-        invocation_id: String,
-        sink: T,
-    ) -> Result<(), Box<dyn std::error::Error>>
+    async fn forward<T>(self, invocation_id: String, sink: T) -> Result<(), SignalRError>
     where
-        T: Sink<String> + Send,
-        <T as Sink<String>>::Error: std::error::Error + 'static,
+        T: Sink<String, Error = SignalRError> + Send,
     {
         let completion = Completion::new(invocation_id, Some(self), None);
-
         let text = serde_json::to_string(&completion)? + WEIRD_ENDING;
-
-        Box::pin(sink)
-            .send(text)
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+        Box::pin(sink).send(text).await
     }
 }
 
@@ -118,14 +83,9 @@ impl<R> HubResponse for Result<R, String>
 where
     R: HubResponse + Send + Serialize,
 {
-    async fn forward<T>(
-        self,
-        invocation_id: String,
-        sink: T,
-    ) -> Result<(), Box<dyn std::error::Error>>
+    async fn forward<T>(self, invocation_id: String, sink: T) -> Result<(), SignalRError>
     where
-        T: Sink<String> + Send,
-        <T as Sink<String>>::Error: std::error::Error + 'static,
+        T: Sink<String, Error = SignalRError> + Send,
     {
         let completion = match self {
             Ok(ok) => Completion::new(invocation_id, Some(ok), None),
@@ -134,10 +94,7 @@ where
 
         let text = serde_json::to_string(&completion)? + WEIRD_ENDING;
 
-        Box::pin(sink)
-            .send(text)
-            .await
-            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+        Box::pin(sink).send(text).await
     }
 }
 
@@ -148,7 +105,11 @@ pub trait Try {}
 pub struct HubStream;
 
 #[derive(Debug)]
-struct InfallibleHubStream<S>(S);
+#[pin_project]
+struct InfallibleHubStream<S> {
+    #[pin]
+    inner: S,
+}
 
 #[derive(Debug)]
 struct FallibleHubStream<S>(S);
@@ -159,7 +120,7 @@ impl HubStream {
         S: Stream<Item = I> + Send + 'static,
         I: Send + Serialize,
     {
-        InfallibleHubStream(stream)
+        InfallibleHubStream { inner: stream }
     }
 
     pub fn fallible<S, I>(stream: S) -> impl HubResponse
@@ -171,22 +132,39 @@ impl HubStream {
     }
 }
 
+impl<In, Itm> InfallibleHubStream<In>
+where
+    In: Stream<Item = Itm>,
+    <In as Stream>::Item: Serialize,
+{
+    pub fn new<Out>(
+        invocation_id: String,
+        inner: In,
+    ) -> InfallibleHubStream<impl Stream<Item = String>> {
+        let mapped = inner
+            .zip(futures::stream::repeat(invocation_id.clone()))
+            .map(|(e, id)| StreamItem::new(id, e))
+            .map(|si| serde_json::to_string(&si).unwrap() + WEIRD_ENDING)
+            .chain(futures::stream::once(async {
+                let completion: Completion<usize> = Completion::new(invocation_id, None, None);
+                serde_json::to_string(&completion).unwrap() + WEIRD_ENDING
+            }));
+
+        InfallibleHubStream { inner: mapped }
+    }
+}
+
 #[async_trait::async_trait]
 impl<S, I> HubResponse for InfallibleHubStream<S>
 where
     S: Stream<Item = I> + Send,
     I: Serialize + Send,
 {
-    async fn forward<T>(
-        self,
-        invocation_id: String,
-        sink: T,
-    ) -> Result<(), Box<dyn std::error::Error>>
+    async fn forward<T>(self, invocation_id: String, sink: T) -> Result<(), SignalRError>
     where
-        T: Sink<String> + Send,
-        <T as Sink<String>>::Error: std::error::Error + 'static,
+        T: Sink<String, Error = SignalRError> + Send,
     {
-        let result = self.0;
+        let result = self.inner;
 
         let responses = result
             .zip(futures::stream::repeat(invocation_id.clone()))
@@ -201,9 +179,7 @@ where
         let mut sink = Box::pin(sink);
 
         while let Some(item) = responses.next().await {
-            sink.send(item)
-                .await
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+            sink.send(item).await?;
         }
 
         Ok(())
@@ -216,14 +192,9 @@ where
     S: Stream<Item = Result<I, String>> + Send,
     I: Serialize + Send,
 {
-    async fn forward<T>(
-        self,
-        invocation_id: String,
-        sink: T,
-    ) -> Result<(), Box<dyn std::error::Error>>
+    async fn forward<T>(self, invocation_id: String, sink: T) -> Result<(), SignalRError>
     where
-        T: Sink<String> + Send,
-        <T as Sink<String>>::Error: std::error::Error + 'static,
+        T: Sink<String, Error = SignalRError> + Send,
     {
         let result = self.0;
 
@@ -253,9 +224,7 @@ where
         let mut sink = Box::pin(sink);
 
         while let Some(item) = responses.next().await {
-            sink.send(item)
-                .await
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+            sink.send(item).await?;
         }
 
         Ok(())
@@ -271,16 +240,95 @@ where
     F: Future<Output = O> + Send,
     O: HubResponse + Send,
 {
-    async fn forward<T>(
-        self,
-        invocation_id: String,
-        sink: T,
-    ) -> Result<(), Box<dyn std::error::Error>>
+    async fn forward<T>(self, invocation_id: String, sink: T) -> Result<(), SignalRError>
     where
-        T: Sink<String> + Send,
-        <T as Sink<String>>::Error: std::error::Error + 'static,
+        T: Sink<String, Error = SignalRError> + Send,
     {
         let result = self.0.await;
         result.forward(invocation_id, sink).await
+    }
+}
+
+// idea!
+// pub trait HubResponse {
+//     async fn prepare_stream(
+//         self,
+//         invocation_id: String,
+//     ) -> impl Stream<Item = String>
+
+//
+// pub trait HubResponseExt : HubResponse {
+//
+// tu walnąć forward, wtedy HubResponse jest object safe o ile Stream będzie konkretną implementacją
+//
+//
+//
+
+pub trait HubResponseV2 {
+    type Stream: Stream<Item = Self::Out>;
+    type Out;
+
+    fn into_stream(self) -> Self::Stream;
+}
+
+#[derive(Debug)]
+pub struct ReadyStream<T>(futures::future::Ready<T>);
+
+impl<T> Stream for ReadyStream<T> {
+    type Item = T;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.0.poll_unpin(cx).map(|x| Some(x))
+    }
+}
+
+macro_rules! impl_hub_response_v2 {
+    ($($type:ty),+) => {
+    $(
+        impl HubResponseV2 for $type {
+            type Stream = ReadyStream<Self::Out>;
+            type Out = $type;
+
+            fn into_stream(self) -> Self::Stream {
+                ReadyStream(futures::future::ready(self))
+            }
+        }
+    )*
+    };
+}
+
+impl_hub_response_v2!(usize, isize);
+impl_hub_response_v2!(i8, i16, i32, i64, i128);
+impl_hub_response_v2!(u8, u16, u32, u64, u128);
+impl_hub_response_v2!(f32, f64);
+impl_hub_response_v2!(String, &'static str);
+
+impl<Wrapped> Stream for InfallibleHubStream<Wrapped>
+where
+    Wrapped: Stream,
+{
+    type Item = <Wrapped as Stream>::Item;
+
+    fn poll_next(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        let mut pinned = self.project();
+        pinned.inner.poll_next_unpin(cx)
+    }
+}
+
+impl<Wrapped> HubResponseV2 for InfallibleHubStream<Wrapped>
+where
+    Wrapped: Stream,
+{
+    type Stream = InfallibleHubStream<Wrapped>;
+    type Out = <Wrapped as Stream>::Item;
+
+    fn into_stream(self) -> Self::Stream {
+        self
     }
 }

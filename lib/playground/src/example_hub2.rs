@@ -1,12 +1,13 @@
 use async_stream::stream;
 use flume::r#async::{RecvStream, SendSink};
+use futures::future::ok;
 use futures::{future, Future, Sink, SinkExt, Stream, StreamExt};
 use serde;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
-use signalrs_core::{hub_response::*, protocol::*};
-use std::error::Error;
-use std::fmt;
+use signalrs_core::{error::SignalRError, hub_response::*, protocol::*};
+use std::future::Ready;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::{any::Any, collections::HashMap, fmt::Debug, sync::Arc};
 use tokio;
@@ -24,25 +25,12 @@ pub struct ClientStream {
     sink: Box<dyn Any + Send>,
 }
 
-pub struct Hub {}
-
 // ======== Function abstraction
 
 pub struct ResponseSink {}
 
-#[derive(Debug)]
-pub struct ResponseSinkError;
-
-impl fmt::Display for ResponseSinkError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
-    }
-}
-
-impl Error for ResponseSinkError {}
-
 impl Sink<String> for ResponseSink {
-    type Error = ResponseSinkError;
+    type Error = SignalRError;
 
     fn poll_ready(
         self: std::pin::Pin<&mut Self>,
@@ -70,8 +58,8 @@ impl Sink<String> for ResponseSink {
     }
 }
 
-pub trait Method<T> {
-    type Future: Future<Output = Result<(), Box<dyn Error>>> + Send;
+pub trait Handler<T> {
+    type Future: Future<Output = Result<(), SignalRError>> + Send;
 
     fn call(self, request: String, output: ResponseSink, stream: bool) -> Self::Future;
 }
@@ -89,13 +77,13 @@ pub trait StreamingResponse<Ret>: private::Sealed {
     async fn stream_it();
 }
 
-impl<F, Ret, T1> Method<T1> for F
+impl<F, Ret, T1> Handler<T1> for F
 where
     F: FnOnce(T1) -> Ret,
     Ret: HubResponse + Send + 'static,
     T1: DeserializeOwned + 'static,
 {
-    type Future = Pin<Box<dyn Future<Output = Result<(), Box<dyn Error>>> + Send>>;
+    type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
 
     fn call(self, request: String, output: ResponseSink, stream: bool) -> Self::Future {
         if stream {
@@ -107,10 +95,115 @@ where
                 let id_clone = id.clone();
                 return Box::pin(async move { result.forward(id_clone, output).await });
             }
+        }
+        Box::pin(future::ready(Ok(())))
+    }
+}
 
-            Box::pin(future::ready(Ok(()))) // chyba trzeba w końcu zrobić errory, żeby to rozwiązać
+pub struct IntoCallable<H, T> {
+    handler: H,
+    _marker: PhantomData<T>,
+}
+
+impl<H, T> IntoCallable<H, T> {
+    pub fn new(handler: H) -> Self {
+        IntoCallable {
+            handler,
+            _marker: Default::default(),
         }
     }
+}
+
+pub trait Callable {
+    type Future: Future<Output = Result<(), SignalRError>> + Send;
+
+    fn call(&self, request: String, output: ResponseSink, stream: bool) -> Self::Future;
+}
+
+impl<H, T> Callable for IntoCallable<H, T>
+where
+    H: Handler<T> + Clone,
+{
+    type Future = <H as Handler<T>>::Future;
+    /// need to return concrete future different from handler?
+
+    fn call(&self, request: String, output: ResponseSink, stream: bool) -> Self::Future {
+        let handler = self.handler.clone();
+        handler.call(request, output, stream)
+    }
+}
+
+// ======== Builder
+
+pub struct HubBuilder {
+    methods: HashMap<
+        String,
+        Arc<dyn Callable<Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>>>,
+    >,
+}
+
+impl HubBuilder {
+    pub fn new() -> Self {
+        HubBuilder {
+            methods: Default::default(),
+        }
+    }
+
+    pub fn method<H, Args>(mut self, name: &str, handler: H) -> Self
+    where
+        H: Handler<Args, Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>>
+            + 'static
+            + Clone,
+        Args: DeserializeOwned + 'static,
+    {
+        let callable: IntoCallable<_, Args> = IntoCallable::new(handler);
+        self.methods.insert(name.to_owned(), Arc::new(callable));
+        self
+    }
+
+    pub fn build(self) -> Hub {
+        Hub {
+            methods: self.methods,
+        }
+    }
+}
+
+pub struct Hub {
+    methods: HashMap<
+        String,
+        Arc<dyn Callable<Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>>>,
+    >,
+}
+
+impl Hub {
+    pub async fn invoke_text<T>(
+        &self,
+        text: String,
+        output: ResponseSink,
+    ) -> Result<(), SignalRError> {
+        let text = text.trim_end_matches(WEIRD_ENDING).to_owned();
+
+        match serde_json::from_str::<Type>(&text)?.message_type {
+            MessageType::Invocation => {
+                let target: Target = serde_json::from_str(&text)?;
+
+                if let Some(callable) = self.methods.get(&target.target) {
+                    callable.call(text, output, false).await?;
+                }
+            }
+            _ => panic!(),
+        };
+
+        Ok(())
+    }
+}
+
+#[allow(dead_code)]
+fn test() {
+    let builder = HubBuilder::new()
+        .method("identity", identity)
+        .method("identity2", identity)
+        .build();
 }
 
 // ======== Handshake
@@ -172,7 +265,8 @@ impl HubInvoker {
                         let result = non_blocking();
 
                         if let Some(id) = invocation.id() {
-                            result.forward(id.clone(), output).await?;
+                            // result.forward(id.clone(), output).await?;
+                            todo!()
                         }
 
                         Ok(())
@@ -182,10 +276,11 @@ impl HubInvoker {
 
                         let arguments = invocation.arguments().unwrap();
 
-                        let result = add(arguments);
+                        let result = add(arguments).into_stream();
 
                         if let Some(id) = invocation.id() {
-                            result.forward(id.clone(), output).await?;
+                            // result.forward(id.clone(), output).await?;
+                            todo!()
                         }
 
                         Ok(())
@@ -198,7 +293,8 @@ impl HubInvoker {
                         let result = single_result_failure(arguments);
 
                         if let Some(id) = invocation.id() {
-                            result.forward(id.clone(), output).await?;
+                            // result.forward(id.clone(), output).await?;
+                            todo!()
                         }
 
                         Ok(())
@@ -211,7 +307,8 @@ impl HubInvoker {
                         let result = batched(arguments);
 
                         if let Some(id) = invocation.id() {
-                            result.forward(id.clone(), output).await?;
+                            // result.forward(id.clone(), output).await?;
+                            todo!()
                         }
 
                         Ok(())
@@ -331,7 +428,8 @@ where
     let result = hub_function(arguments);
 
     if let Some(id) = invocation.id() {
-        result.forward(id.clone(), output).await?;
+        // result.forward(id.clone(), output).await?;
+        todo!()
     }
 
     Ok(())
@@ -355,20 +453,22 @@ where
     let arguments = stream_invocation.arguments.unwrap();
     let invocation_id = stream_invocation.invocation_id;
 
-    let result = hub_function(arguments).forward(invocation_id.clone(), output);
+    // let result = hub_function(arguments).forward(invocation_id.clone(), output);
 
-    let invocation_id_clone = invocation_id.clone();
-    let invocations_clone = Arc::clone(&invocations);
-    let ongoing = tokio::spawn(async move {
-        result.await.unwrap();
-        let mut invocations = invocations_clone.lock().await;
-        (*invocations).remove(&invocation_id_clone);
-    });
+    todo!();
 
-    let mut guard = invocations.lock().await;
-    (*guard).insert(invocation_id, ongoing);
+    // let invocation_id_clone = invocation_id.clone();
+    // let invocations_clone = Arc::clone(&invocations);
+    // let ongoing = tokio::spawn(async move {
+    //     result.await.unwrap();
+    //     let mut invocations = invocations_clone.lock().await;
+    //     (*invocations).remove(&invocation_id_clone);
+    // });
 
-    Ok(())
+    // let mut guard = invocations.lock().await;
+    // (*guard).insert(invocation_id, ongoing);
+
+    // Ok(())
 }
 
 async fn text_client_stream_invocation<'de, T, R, F, S, I>(
@@ -409,10 +509,10 @@ where
         tokio::spawn(async move {
             let hub_function_future = hub_function(arguments, rx.into_stream());
 
-            hub_function_future
-                .forward(invocation_id_clone, output_clone)
-                .await
-                .unwrap();
+            // hub_function_future
+            //     .forward(invocation_id_clone, output_clone)
+            //     .await
+            //     .unwrap();
         });
     }
 
@@ -442,6 +542,10 @@ pub struct Args<T>(T);
 
 pub fn non_blocking() {
     // nothing
+}
+
+pub fn identity(Args(a): Args<i32>) -> i32 {
+    a
 }
 
 pub fn add(Args((a, b)): Args<(i32, i32)>) -> i32 {

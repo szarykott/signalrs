@@ -1,12 +1,8 @@
 use flume::r#async::{RecvStream, SendSink};
-use futures::{Future, Sink, SinkExt};
+use futures::{Sink, SinkExt};
 use serde::{self, de::DeserializeOwned, Deserialize};
-use signalrs_core::{
-    descriptor::{self, *},
-    hub_response::*,
-    protocol::*,
-};
-use std::{any::Any, collections::HashMap, fmt::Debug, pin::Pin, sync::Arc};
+use signalrs_core::{descriptor::*, hub_response::*, protocol::*};
+use std::{any::Any, collections::HashMap, fmt::Debug, sync::Arc};
 use tokio::{self, sync::Mutex};
 
 const WEIRD_ENDING: &str = "\u{001E}";
@@ -166,7 +162,8 @@ where
     let result = hub_function(arguments);
 
     if let Some(id) = invocation.id() {
-        result.forward(id.clone(), output).await?;
+        // result.forward(id.clone(), output).await?;
+        todo!()
     }
 
     Ok(())
@@ -190,20 +187,22 @@ where
     let arguments = stream_invocation.arguments.unwrap();
     let invocation_id = stream_invocation.invocation_id;
 
-    let result = hub_function(arguments).forward(invocation_id.clone(), output);
+    todo!()
 
-    let invocation_id_clone = invocation_id.clone();
-    let invocations_clone = Arc::clone(&invocations);
-    let ongoing = tokio::spawn(async move {
-        result.await.unwrap();
-        let mut invocations = invocations_clone.lock().await;
-        (*invocations).remove(&invocation_id_clone);
-    });
+    // let result = hub_function(arguments).forward(invocation_id.clone(), output);
 
-    let mut guard = invocations.lock().await;
-    (*guard).insert(invocation_id, ongoing);
+    // let invocation_id_clone = invocation_id.clone();
+    // let invocations_clone = Arc::clone(&invocations);
+    // let ongoing = tokio::spawn(async move {
+    //     result.await.unwrap();
+    //     let mut invocations = invocations_clone.lock().await;
+    //     (*invocations).remove(&invocation_id_clone);
+    // });
 
-    Ok(())
+    // let mut guard = invocations.lock().await;
+    // (*guard).insert(invocation_id, ongoing);
+
+    // Ok(())
 }
 
 async fn text_client_stream_invocation<'de, T, R, F, S, I>(
@@ -244,10 +243,10 @@ where
         tokio::spawn(async move {
             let hub_function_future = hub_function(arguments, rx.into_stream());
 
-            hub_function_future
-                .forward(invocation_id_clone, output_clone)
-                .await
-                .unwrap();
+            // hub_function_future
+            //     .forward(invocation_id_clone, output_clone)
+            //     .await
+            //     .unwrap();
         });
     }
 
