@@ -1,12 +1,12 @@
-use std::{collections::HashMap, sync::Arc};
+// use std::{collections::HashMap, sync::Arc};
 
-use crate::{hub_response::HubResponse, hub_response::*};
+// use crate::{hub_response::HubResponse, hub_response::*};
 
-#[allow(missing_debug_implementations)]
-pub struct HubDescriptor<Hub, Ret> {
-    pub hub: Arc<Hub>,
-    pub methods: HashMap<String, MethodDescriptor<Hub, SignalRResponse<Ret>>>,
-}
+// #[allow(missing_debug_implementations)]
+// pub struct HubDescriptor<Hub, Ret> {
+//     pub hub: Arc<Hub>,
+//     pub methods: HashMap<String, MethodDescriptor<Hub, SignalRResponse<Ret>>>,
+// }
 
 // impl<Hub, Ret> HubDescriptor<Hub, Ret>
 // where
@@ -36,21 +36,21 @@ pub struct HubDescriptor<Hub, Ret> {
 //     }
 // }
 
-#[allow(missing_debug_implementations)]
-pub struct MethodDescriptor<Hub, Ret> {
-    pub action: Box<dyn Fn(Arc<Hub>, String) -> Ret>,
-}
+// #[allow(missing_debug_implementations)]
+// pub struct MethodDescriptor<Hub, Ret> {
+//     pub action: Box<dyn Fn(Arc<Hub>, String) -> Ret>,
+// }
 
-impl<Hub, Ret> MethodDescriptor<Hub, Ret>
-where
-    Ret: HubResponse,
-{
-    pub fn new<Func>(action: Func) -> Self
-    where
-        Func: Fn(Arc<Hub>, String) -> Ret + 'static,
-    {
-        MethodDescriptor {
-            action: Box::new(action),
-        }
-    }
-}
+// impl<Hub, Ret> MethodDescriptor<Hub, Ret>
+// where
+//     Ret: HubResponse,
+// {
+//     pub fn new<Func>(action: Func) -> Self
+//     where
+//         Func: Fn(Arc<Hub>, String) -> Ret + 'static,
+//     {
+//         MethodDescriptor {
+//             action: Box::new(action),
+//         }
+//     }
+// }

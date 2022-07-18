@@ -10,8 +10,11 @@ use axum::{
     Router,
 };
 use futures::{select, sink::SinkExt, stream::StreamExt, FutureExt};
-use playground::example_hub::HubInvoker;
-use signalrs_core::negotiate::{NegotiateResponseV0, TransportSpec};
+use playground::example_hub2::{Hub, HubBuilder};
+use signalrs_core::{
+    hub_response::{HubResponseStruct, ResponseSink},
+    negotiate::{NegotiateResponseV0, TransportSpec},
+};
 use std::sync::Arc;
 use tower_http::{
     cors::{AllowOrigin, CorsLayer},
@@ -42,7 +45,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     });
 
-    let invoker = Arc::new(HubInvoker::new());
+    let hub_builder = HubBuilder::new();
+
+    let invoker = Arc::new(hub_builder.build());
 
     let app = Router::new()
         .route("/", index)
@@ -73,43 +78,44 @@ async fn negotiate() -> Json<NegotiateResponseV0> {
 
 async fn ws_upgrade_handler(
     ws: WebSocketUpgrade,
-    Extension(invoker): Extension<Arc<HubInvoker>>,
+    Extension(invoker): Extension<Arc<Hub>>,
 ) -> impl IntoResponse {
     let f = |ws| ws_handler(ws, invoker);
     ws.on_upgrade(f)
 }
 
-async fn ws_handler(socket: WebSocket, invoker: Arc<HubInvoker>) {
-    let (mut tx, mut rx) = socket.split();
+async fn ws_handler(socket: WebSocket, invoker: Arc<Hub>) {
+    let (mut tx_socket, mut rx_socket) = socket.split();
 
-    if let Some(Ok(Message::Text(msg))) = rx.next().await {
+    if let Some(Ok(Message::Text(msg))) = rx_socket.next().await {
         let response = invoker.handshake(msg.as_str());
-        tx.send(Message::Text(response)).await.unwrap();
+        tx_socket.send(Message::Text(response)).await.unwrap();
     } else {
         return;
     }
 
-    let (itx, irx) = flume::bounded(1000);
-    let itx = itx.into_sink();
-    let mut irx = irx.into_stream(); // TODO: verify memory leak bug fixed!
+    let (tx_channel, irx) = flume::bounded(1000);
+
+    let tx_channel = ResponseSink::new(tx_channel.into_sink());
+    let mut rx_channel = irx.into_stream(); // TODO: verify memory leak bug fixed!
 
     loop {
         select! {
-            si = irx.next() => match si {
+            si = rx_channel.next() => match si {
                 Some(msg) => {
-                    let msg : String = msg;
+                    let msg : HubResponseStruct = msg;
                     dbg!(msg.clone());
-                    tx.send(Message::Text(msg)).await.unwrap();
+                    tx_socket.send(Message::Text(msg.unwrap_text())).await.unwrap();
                 },
                 None => { /* panik */ },
             },
-            nm = rx.next().fuse() => match nm {
+            nm = rx_socket.next().fuse() => match nm {
                 Some(Ok(msg)) => {
                     dbg!(msg.clone());
                     match msg {
                         Message::Text(f) => {
                             let invoker = Arc::clone(&invoker);
-                            let itx = itx.clone();
+                            let itx = tx_channel.clone();
                             tokio::spawn(async move {
                                 if let Err(_e) = invoker.invoke_text(f, itx).await {
                                     // TODO: log e?
@@ -117,11 +123,9 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<HubInvoker>) {
                             });
                         }
                         Message::Binary(f) => {
-                            let response = invoker.invoke_binary(&f).await;
-                            dbg!(response.clone());
-                            tx.send(Message::Binary(response)).await.unwrap();
+                            // do nothing
                         }
-                        Message::Ping(d) => tx.send(Message::Pong(d)).await.unwrap(),
+                        Message::Ping(d) => tx_socket.send(Message::Pong(d)).await.unwrap(),
                         Message::Pong(_) => { /* ignore */ }
                         Message::Close(_) => { /* ignore */ }
                     };

@@ -7,6 +7,7 @@ version = "0.1.0"
 
 [dependencies]
 async-trait = "0.1"
+flume = "0.10.13"
 futures = "0.3"
 pin-project = "1"
 rmp-serde = "1.1"

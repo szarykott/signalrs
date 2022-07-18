@@ -1,12 +1,10 @@
 use async_stream::stream;
-use flume::r#async::{RecvStream, SendSink};
-use futures::future::ok;
+use flume::r#async::SendSink;
 use futures::{future, Future, Sink, SinkExt, Stream, StreamExt};
 use serde;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use signalrs_core::{error::SignalRError, hub_response::*, protocol::*};
-use std::future::Ready;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::{any::Any, collections::HashMap, fmt::Debug, sync::Arc};
@@ -25,43 +23,11 @@ pub struct ClientStream {
     sink: Box<dyn Any + Send>,
 }
 
-// ======== Function abstraction
-
-pub struct ResponseSink {}
-
-impl Sink<String> for ResponseSink {
-    type Error = SignalRError;
-
-    fn poll_ready(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
-        todo!()
-    }
-
-    fn start_send(self: std::pin::Pin<&mut Self>, item: String) -> Result<(), Self::Error> {
-        todo!()
-    }
-
-    fn poll_flush(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
-        todo!()
-    }
-
-    fn poll_close(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
-        todo!()
-    }
-}
-
 pub trait Handler<T> {
     type Future: Future<Output = Result<(), SignalRError>> + Send;
+    type Sink;
 
-    fn call(self, request: String, output: ResponseSink, stream: bool) -> Self::Future;
+    fn call(self, request: String, output: Self::Sink, stream: bool) -> Self::Future;
 }
 
 pub trait SingleResponse<Ret> {
@@ -83,9 +49,10 @@ where
     Ret: HubResponse + Send + 'static,
     T1: DeserializeOwned + 'static,
 {
-    type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
+    type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send + Sync>>;
+    type Sink = ResponseSink;
 
-    fn call(self, request: String, output: ResponseSink, stream: bool) -> Self::Future {
+    fn call(self, request: String, output: Self::Sink, stream: bool) -> Self::Future {
         if stream {
             unimplemented!()
         } else {
@@ -116,8 +83,9 @@ impl<H, T> IntoCallable<H, T> {
 
 pub trait Callable {
     type Future: Future<Output = Result<(), SignalRError>> + Send;
+    type Sink;
 
-    fn call(&self, request: String, output: ResponseSink, stream: bool) -> Self::Future;
+    fn call(&self, request: String, output: Self::Sink, stream: bool) -> Self::Future;
 }
 
 impl<H, T> Callable for IntoCallable<H, T>
@@ -126,8 +94,9 @@ where
 {
     type Future = <H as Handler<T>>::Future;
     /// need to return concrete future different from handler?
+    type Sink = <H as Handler<T>>::Sink;
 
-    fn call(&self, request: String, output: ResponseSink, stream: bool) -> Self::Future {
+    fn call(&self, request: String, output: Self::Sink, stream: bool) -> Self::Future {
         let handler = self.handler.clone();
         handler.call(request, output, stream)
     }
@@ -138,7 +107,12 @@ where
 pub struct HubBuilder {
     methods: HashMap<
         String,
-        Arc<dyn Callable<Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>>>,
+        Arc<
+            dyn Callable<
+                Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send + Sync>>,
+                Sink = ResponseSink,
+            >,
+        >,
     >,
 }
 
@@ -151,7 +125,11 @@ impl HubBuilder {
 
     pub fn method<H, Args>(mut self, name: &str, handler: H) -> Self
     where
-        H: Handler<Args, Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>>
+        H: Handler<
+                Args,
+                Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send + Sync>>,
+                Sink = ResponseSink,
+            >
             + 'static
             + Clone,
         Args: DeserializeOwned + 'static,
@@ -171,11 +149,38 @@ impl HubBuilder {
 pub struct Hub {
     methods: HashMap<
         String,
-        Arc<dyn Callable<Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>>>,
+        Arc<
+            dyn Callable<
+                Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send + Sync>>,
+                Sink = ResponseSink,
+            >,
+        >,
     >,
 }
 
 impl Hub {
+    pub fn handshake(&self, input: &str) -> String {
+        let input = input.trim_end_matches(WEIRD_ENDING);
+
+        let request = serde_json::from_str::<HandshakeRequest>(input);
+
+        let response = match request {
+            Ok(request) => {
+                if request.is_json() {
+                    HandshakeResponse::no_error()
+                } else {
+                    HandshakeResponse::error("Unsupported protocol")
+                }
+            }
+            Err(e) => HandshakeResponse::error(e),
+        };
+
+        match serde_json::to_string(&response) {
+            Ok(value) => format!("{}{}", value, WEIRD_ENDING),
+            Err(e) => e.to_string(),
+        }
+    }
+
     pub async fn invoke_text<T>(
         &self,
         text: String,
@@ -335,24 +340,24 @@ impl HubInvoker {
             MessageType::StreamInvocation => {
                 let target: Target = serde_json::from_str(&text)?;
                 match target.target.as_str() {
-                    "stream" => {
-                        text_stream_invocation(
-                            &text,
-                            |args: StreamArgs| stream(args.0),
-                            output,
-                            Arc::clone(&self.ongoing_invocations),
-                        )
-                        .await
-                    }
-                    "stream_failure" => {
-                        text_stream_invocation(
-                            &text,
-                            |args: StreamArgs| stream_failure(args.0),
-                            output,
-                            Arc::clone(&self.ongoing_invocations),
-                        )
-                        .await
-                    }
+                    // "stream" => {
+                    //     text_stream_invocation(
+                    //         &text,
+                    //         |args: StreamArgs| stream(args.0),
+                    //         output,
+                    //         Arc::clone(&self.ongoing_invocations),
+                    //     )
+                    //     .await
+                    // }
+                    // "stream_failure" => {
+                    //     text_stream_invocation(
+                    //         &text,
+                    //         |args: StreamArgs| stream_failure(args.0),
+                    //         output,
+                    //         Arc::clone(&self.ongoing_invocations),
+                    //     )
+                    //     .await
+                    // }
                     _ => panic!(),
                 }
             }
@@ -409,115 +414,115 @@ impl HubInvoker {
     }
 }
 
-async fn text_invocation<'de, T, R, F, S>(
-    text: &'de str,
-    hub_function: F,
-    output: S,
-) -> Result<(), Box<dyn std::error::Error>>
-where
-    T: Deserialize<'de>,
-    F: FnOnce(T) -> R,
-    R: HubResponse,
-    S: Sink<String> + Send + 'static + Unpin + Clone,
-    <S as Sink<String>>::Error: Debug + std::error::Error,
-{
-    let mut invocation: Invocation<T> = serde_json::from_str(text)?;
+// async fn text_invocation<'de, T, R, F, S>(
+//     text: &'de str,
+//     hub_function: F,
+//     output: S,
+// ) -> Result<(), Box<dyn std::error::Error>>
+// where
+//     T: Deserialize<'de>,
+//     F: FnOnce(T) -> R,
+//     R: HubResponse,
+//     S: Sink<String> + Send + 'static + Unpin + Clone,
+//     <S as Sink<String>>::Error: Debug + std::error::Error,
+// {
+//     let mut invocation: Invocation<T> = serde_json::from_str(text)?;
 
-    let arguments = invocation.arguments().unwrap();
+//     let arguments = invocation.arguments().unwrap();
 
-    let result = hub_function(arguments);
+//     let result = hub_function(arguments);
 
-    if let Some(id) = invocation.id() {
-        // result.forward(id.clone(), output).await?;
-        todo!()
-    }
+//     if let Some(id) = invocation.id() {
+//         // result.forward(id.clone(), output).await?;
+//         todo!()
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }
 
-async fn text_stream_invocation<'de, T, R, F, S>(
-    text: &'de str,
-    hub_function: F,
-    output: S,
-    invocations: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
-) -> Result<(), Box<dyn std::error::Error>>
-where
-    T: Deserialize<'de>,
-    F: FnOnce(T) -> R,
-    R: HubResponse + 'static,
-    S: Sink<String> + Send + 'static + Unpin + Clone,
-    <S as Sink<String>>::Error: Debug + std::error::Error,
-{
-    let stream_invocation: StreamInvocation<T> = serde_json::from_str(text)?;
+// async fn text_stream_invocation<'de, T, R, F, S>(
+//     text: &'de str,
+//     hub_function: F,
+//     output: S,
+//     invocations: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
+// ) -> Result<(), Box<dyn std::error::Error>>
+// where
+//     T: Deserialize<'de>,
+//     F: FnOnce(T) -> R,
+//     R: HubResponse + 'static,
+//     S: Sink<String> + Send + 'static + Unpin + Clone,
+//     <S as Sink<String>>::Error: Debug + std::error::Error,
+// {
+//     let stream_invocation: StreamInvocation<T> = serde_json::from_str(text)?;
 
-    let arguments = stream_invocation.arguments.unwrap();
-    let invocation_id = stream_invocation.invocation_id;
+//     let arguments = stream_invocation.arguments.unwrap();
+//     let invocation_id = stream_invocation.invocation_id;
 
-    // let result = hub_function(arguments).forward(invocation_id.clone(), output);
+//     // let result = hub_function(arguments).forward(invocation_id.clone(), output);
 
-    todo!();
+//     todo!();
 
-    // let invocation_id_clone = invocation_id.clone();
-    // let invocations_clone = Arc::clone(&invocations);
-    // let ongoing = tokio::spawn(async move {
-    //     result.await.unwrap();
-    //     let mut invocations = invocations_clone.lock().await;
-    //     (*invocations).remove(&invocation_id_clone);
-    // });
+//     // let invocation_id_clone = invocation_id.clone();
+//     // let invocations_clone = Arc::clone(&invocations);
+//     // let ongoing = tokio::spawn(async move {
+//     //     result.await.unwrap();
+//     //     let mut invocations = invocations_clone.lock().await;
+//     //     (*invocations).remove(&invocation_id_clone);
+//     // });
 
-    // let mut guard = invocations.lock().await;
-    // (*guard).insert(invocation_id, ongoing);
+//     // let mut guard = invocations.lock().await;
+//     // (*guard).insert(invocation_id, ongoing);
 
-    // Ok(())
-}
+//     // Ok(())
+// }
 
-async fn text_client_stream_invocation<'de, T, R, F, S, I>(
-    function_name: &'static str,
-    text: &'de str,
-    hub_function: F,
-    output: S,
-    client_streams_mapping: Arc<Mutex<HashMap<String, ClientStream>>>,
-) -> Result<(), Box<dyn std::error::Error>>
-where
-    T: DeserializeOwned + Send + 'static,
-    F: FnOnce(T, RecvStream<'static, I>) -> R + Send + 'static,
-    I: 'static + Send,
-    R: HubResponse + Send + 'static,
-    S: Sink<String> + Send + 'static + Unpin + Clone,
-    <S as Sink<String>>::Error: Debug + std::error::Error,
-{
-    let mut invocation: Invocation<T> = serde_json::from_str(text)?;
+// async fn text_client_stream_invocation<'de, T, R, F, S, I>(
+//     function_name: &'static str,
+//     text: &'de str,
+//     hub_function: F,
+//     output: S,
+//     client_streams_mapping: Arc<Mutex<HashMap<String, ClientStream>>>,
+// ) -> Result<(), Box<dyn std::error::Error>>
+// where
+//     T: DeserializeOwned + Send + 'static,
+//     F: FnOnce(T, RecvStream<'static, I>) -> R + Send + 'static,
+//     I: 'static + Send,
+//     R: HubResponse + Send + 'static,
+//     S: Sink<String> + Send + 'static + Unpin + Clone,
+//     <S as Sink<String>>::Error: Debug + std::error::Error,
+// {
+//     let mut invocation: Invocation<T> = serde_json::from_str(text)?;
 
-    let invocation_id = invocation.id().clone().unwrap();
-    let arguments = invocation.arguments().unwrap();
+//     let invocation_id = invocation.id().clone().unwrap();
+//     let arguments = invocation.arguments().unwrap();
 
-    if let Some(e) = invocation.stream_ids {
-        let (tx, rx) = flume::bounded(100);
+//     if let Some(e) = invocation.stream_ids {
+//         let (tx, rx) = flume::bounded(100);
 
-        for incoming_stream in e {
-            let mut guard = client_streams_mapping.lock().await;
-            let cs = ClientStream {
-                to_function: function_name.to_string(),
-                sink: Box::new(tx.clone().into_sink()),
-            };
-            (*guard).insert(incoming_stream.clone(), cs);
-        }
+//         for incoming_stream in e {
+//             let mut guard = client_streams_mapping.lock().await;
+//             let cs = ClientStream {
+//                 to_function: function_name.to_string(),
+//                 sink: Box::new(tx.clone().into_sink()),
+//             };
+//             (*guard).insert(incoming_stream.clone(), cs);
+//         }
 
-        let output_clone = output.clone();
-        let invocation_id_clone = invocation_id.clone();
+//         let output_clone = output.clone();
+//         let invocation_id_clone = invocation_id.clone();
 
-        tokio::spawn(async move {
-            let hub_function_future = hub_function(arguments, rx.into_stream());
+//         tokio::spawn(async move {
+//             let hub_function_future = hub_function(arguments, rx.into_stream());
 
-            // hub_function_future
-            //     .forward(invocation_id_clone, output_clone)
-            //     .await
-            //     .unwrap();
-        });
-    }
+//             // hub_function_future
+//             //     .forward(invocation_id_clone, output_clone)
+//             //     .await
+//             //     .unwrap();
+//         });
+//     }
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 async fn text_stream_item<'de, T>(
     text: &'de str,
