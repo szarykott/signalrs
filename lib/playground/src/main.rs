@@ -1,4 +1,5 @@
 // use playground::{example_hub, ws_transport};
+use async_stream::stream;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -10,10 +11,11 @@ use axum::{
     Router,
 };
 use futures::{select, sink::SinkExt, stream::StreamExt, FutureExt};
-use playground::example_hub2::{Hub, HubBuilder};
 use signalrs_core::{
-    hub_response::{HubResponseStruct, ResponseSink},
+    extract::Args,
+    hub::{builder::HubBuilder, Hub},
     negotiate::{NegotiateResponseV0, TransportSpec},
+    response::{HubResponse, HubResponseStruct, HubStream, ResponseSink},
 };
 use std::sync::Arc;
 use tower_http::{
@@ -45,7 +47,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
     });
 
-    let hub_builder = HubBuilder::new();
+    let hub_builder = HubBuilder::new()
+        .method("add", add)
+        .method("stream", stream);
 
     let invoker = Arc::new(hub_builder.build());
 
@@ -122,7 +126,7 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<Hub>) {
                                 };
                             });
                         }
-                        Message::Binary(f) => {
+                        Message::Binary(_) => {
                             // do nothing
                         }
                         Message::Ping(d) => tx_socket.send(Message::Pong(d)).await.unwrap(),
@@ -140,4 +144,17 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<Hub>) {
             }
         }
     }
+}
+
+async fn add(Args((a, b)): Args<(i32, i32)>) -> i32 {
+    a + b
+}
+
+pub async fn stream(Args(count): Args<usize>) -> impl HubResponse {
+    HubStream::infallible(stream! {
+        for i in 0..count {
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            yield i;
+        }
+    })
 }

@@ -84,12 +84,12 @@ impl Close {
 pub struct Invocation<A> {
     r#type: MessageType,
     #[serde(skip_serializing_if = "Option::is_none")]
-    headers: Option<HashMap<String, String>>,
+    pub headers: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    invocation_id: Option<String>,
-    target: String,
+    pub invocation_id: Option<String>,
+    pub target: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    arguments: Option<A>,
+    pub arguments: Option<A>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream_ids: Option<Vec<String>>,
 }
@@ -104,18 +104,6 @@ impl<A> Invocation<A> {
             arguments,
             stream_ids: None,
         }
-    }
-
-    pub fn target(&self) -> &str {
-        self.target.as_str()
-    }
-
-    pub fn id(&self) -> &Option<String> {
-        &self.invocation_id
-    }
-
-    pub fn arguments(&mut self) -> Option<A> {
-        self.arguments.take()
     }
 }
 
@@ -279,6 +267,12 @@ impl From<u8> for MessageType {
 
 // TODO: Try to unify
 #[derive(Deserialize, Debug, Clone)]
+pub struct OptionalId {
+    #[serde(rename = "invocationId")]
+    pub invocation_id: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
 pub struct Id {
     #[serde(rename = "invocationId")]
     pub invocation_id: String,
@@ -293,4 +287,10 @@ pub struct Type {
 #[derive(Deserialize, Debug, Clone)]
 pub struct Target {
     pub target: String,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct Arguments<T> {
+    pub arguments: Option<T>,
 }

@@ -20,12 +20,6 @@ pub enum SignalRResponse<R> {
 }
 
 #[non_exhaustive]
-#[derive(Debug)]
-pub enum HubRequest {
-    Text(String),
-}
-
-#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum HubResponseStruct {
     Text(String),
@@ -134,10 +128,14 @@ impl<R> HubResponse for Vec<R>
 where
     R: HubResponse + Send + Serialize,
 {
-    async fn forward(self, invocation_id: String, sink: ResponseSink) -> Result<(), SignalRError> {
+    async fn forward(
+        self,
+        invocation_id: String,
+        mut sink: ResponseSink,
+    ) -> Result<(), SignalRError> {
         let completion = Completion::new(invocation_id, Some(self), None);
         let text = serde_json::to_string(&completion)? + WEIRD_ENDING;
-        Box::pin(sink).send(text).await
+        sink.send(text).await
     }
 }
 
@@ -146,7 +144,11 @@ impl<R> HubResponse for Result<R, String>
 where
     R: HubResponse + Send + Serialize,
 {
-    async fn forward(self, invocation_id: String, sink: ResponseSink) -> Result<(), SignalRError> {
+    async fn forward(
+        self,
+        invocation_id: String,
+        mut sink: ResponseSink,
+    ) -> Result<(), SignalRError> {
         let completion = match self {
             Ok(ok) => Completion::new(invocation_id, Some(ok), None),
             Err(err) => Completion::new(invocation_id, None, Some(err)),
@@ -154,7 +156,7 @@ where
 
         let text = serde_json::to_string(&completion)? + WEIRD_ENDING;
 
-        Box::pin(sink).send(text).await
+        sink.send(text).await
     }
 }
 

@@ -1,12 +1,10 @@
 use async_stream::stream;
 use flume::r#async::SendSink;
-use futures::{future, Future, Sink, SinkExt, Stream, StreamExt};
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use serde;
-use serde::de::DeserializeOwned;
 use serde::Deserialize;
-use signalrs_core::{error::SignalRError, hub_response::*, protocol::*};
-use std::marker::PhantomData;
-use std::pin::Pin;
+use signalrs_core::extract::Args;
+use signalrs_core::{protocol::*, response::*};
 use std::{any::Any, collections::HashMap, fmt::Debug, sync::Arc};
 use tokio;
 use tokio::sync::Mutex;
@@ -23,13 +21,6 @@ pub struct ClientStream {
     sink: Box<dyn Any + Send>,
 }
 
-pub trait Handler<T> {
-    type Future: Future<Output = Result<(), SignalRError>> + Send;
-    type Sink;
-
-    fn call(self, request: String, output: Self::Sink, stream: bool) -> Self::Future;
-}
-
 pub trait SingleResponse<Ret> {
     fn into_completion() -> Completion<Ret>;
 }
@@ -41,174 +32,6 @@ mod private {
 #[async_trait::async_trait]
 pub trait StreamingResponse<Ret>: private::Sealed {
     async fn stream_it();
-}
-
-impl<F, Ret, T1> Handler<T1> for F
-where
-    F: FnOnce(T1) -> Ret,
-    Ret: HubResponse + Send + 'static,
-    T1: DeserializeOwned + 'static,
-{
-    type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send + Sync>>;
-    type Sink = ResponseSink;
-
-    fn call(self, request: String, output: Self::Sink, stream: bool) -> Self::Future {
-        if stream {
-            unimplemented!()
-        } else {
-            let mut invocation: Invocation<_> = serde_json::from_str(&request).unwrap();
-            let result = (self)(invocation.arguments().unwrap()); // TODO: Unwrap necessary?
-            if let Some(id) = invocation.id() {
-                let id_clone = id.clone();
-                return Box::pin(async move { result.forward(id_clone, output).await });
-            }
-        }
-        Box::pin(future::ready(Ok(())))
-    }
-}
-
-pub struct IntoCallable<H, T> {
-    handler: H,
-    _marker: PhantomData<T>,
-}
-
-impl<H, T> IntoCallable<H, T> {
-    pub fn new(handler: H) -> Self {
-        IntoCallable {
-            handler,
-            _marker: Default::default(),
-        }
-    }
-}
-
-pub trait Callable {
-    type Future: Future<Output = Result<(), SignalRError>> + Send;
-    type Sink;
-
-    fn call(&self, request: String, output: Self::Sink, stream: bool) -> Self::Future;
-}
-
-impl<H, T> Callable for IntoCallable<H, T>
-where
-    H: Handler<T> + Clone,
-{
-    type Future = <H as Handler<T>>::Future;
-    /// need to return concrete future different from handler?
-    type Sink = <H as Handler<T>>::Sink;
-
-    fn call(&self, request: String, output: Self::Sink, stream: bool) -> Self::Future {
-        let handler = self.handler.clone();
-        handler.call(request, output, stream)
-    }
-}
-
-// ======== Builder
-
-pub struct HubBuilder {
-    methods: HashMap<
-        String,
-        Arc<
-            dyn Callable<
-                Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send + Sync>>,
-                Sink = ResponseSink,
-            >,
-        >,
-    >,
-}
-
-impl HubBuilder {
-    pub fn new() -> Self {
-        HubBuilder {
-            methods: Default::default(),
-        }
-    }
-
-    pub fn method<H, Args>(mut self, name: &str, handler: H) -> Self
-    where
-        H: Handler<
-                Args,
-                Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send + Sync>>,
-                Sink = ResponseSink,
-            >
-            + 'static
-            + Clone,
-        Args: DeserializeOwned + 'static,
-    {
-        let callable: IntoCallable<_, Args> = IntoCallable::new(handler);
-        self.methods.insert(name.to_owned(), Arc::new(callable));
-        self
-    }
-
-    pub fn build(self) -> Hub {
-        Hub {
-            methods: self.methods,
-        }
-    }
-}
-
-pub struct Hub {
-    methods: HashMap<
-        String,
-        Arc<
-            dyn Callable<
-                Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send + Sync>>,
-                Sink = ResponseSink,
-            >,
-        >,
-    >,
-}
-
-impl Hub {
-    pub fn handshake(&self, input: &str) -> String {
-        let input = input.trim_end_matches(WEIRD_ENDING);
-
-        let request = serde_json::from_str::<HandshakeRequest>(input);
-
-        let response = match request {
-            Ok(request) => {
-                if request.is_json() {
-                    HandshakeResponse::no_error()
-                } else {
-                    HandshakeResponse::error("Unsupported protocol")
-                }
-            }
-            Err(e) => HandshakeResponse::error(e),
-        };
-
-        match serde_json::to_string(&response) {
-            Ok(value) => format!("{}{}", value, WEIRD_ENDING),
-            Err(e) => e.to_string(),
-        }
-    }
-
-    pub async fn invoke_text<T>(
-        &self,
-        text: String,
-        output: ResponseSink,
-    ) -> Result<(), SignalRError> {
-        let text = text.trim_end_matches(WEIRD_ENDING).to_owned();
-
-        match serde_json::from_str::<Type>(&text)?.message_type {
-            MessageType::Invocation => {
-                let target: Target = serde_json::from_str(&text)?;
-
-                if let Some(callable) = self.methods.get(&target.target) {
-                    callable.call(text, output, false).await?;
-                }
-            }
-            _ => panic!(),
-        };
-
-        Ok(())
-    }
-}
-
-#[allow(dead_code)]
-fn test() {
-    let builder = HubBuilder::new()
-        .method("identity", identity)
-        .method("identity2", identity)
-        .build();
 }
 
 // ======== Handshake
@@ -269,7 +92,7 @@ impl HubInvoker {
 
                         let result = non_blocking();
 
-                        if let Some(id) = invocation.id() {
+                        if let Some(id) = invocation.invocation_id {
                             // result.forward(id.clone(), output).await?;
                             todo!()
                         }
@@ -279,11 +102,11 @@ impl HubInvoker {
                     "add" => {
                         let mut invocation: Invocation<_> = serde_json::from_str(&text)?;
 
-                        let arguments = invocation.arguments().unwrap();
+                        let arguments = invocation.arguments.unwrap();
 
                         let result = add(arguments).into_stream();
 
-                        if let Some(id) = invocation.id() {
+                        if let Some(id) = invocation.invocation_id {
                             // result.forward(id.clone(), output).await?;
                             todo!()
                         }
@@ -293,11 +116,11 @@ impl HubInvoker {
                     "single_result_failure" => {
                         let mut invocation: Invocation<_> = serde_json::from_str(&text)?;
 
-                        let arguments = invocation.arguments().unwrap();
+                        let arguments = invocation.arguments.unwrap();
 
                         let result = single_result_failure(arguments);
 
-                        if let Some(id) = invocation.id() {
+                        if let Some(id) = invocation.invocation_id {
                             // result.forward(id.clone(), output).await?;
                             todo!()
                         }
@@ -307,11 +130,11 @@ impl HubInvoker {
                     "batched" => {
                         let mut invocation: Invocation<_> = serde_json::from_str(&text)?;
 
-                        let arguments = invocation.arguments().unwrap();
+                        let arguments = invocation.arguments.unwrap();
 
                         let result = batched(arguments);
 
-                        if let Some(id) = invocation.id() {
+                        if let Some(id) = invocation.invocation_id {
                             // result.forward(id.clone(), output).await?;
                             todo!()
                         }
@@ -362,29 +185,29 @@ impl HubInvoker {
                 }
             }
             MessageType::StreamItem => {
-                let message: Id = serde_json::from_str(&text)?;
+                let message: OptionalId = serde_json::from_str(&text)?;
 
-                let mut guard = self.client_streams_mapping.lock().await;
-                let cs = (*guard).get_mut(&message.invocation_id);
+                // let mut guard = self.client_streams_mapping.lock().await;
+                // let cs = (*guard).get_mut(&message.invocation_id);
 
-                if let Some(cs) = cs {
-                    match cs.to_function.as_str() {
-                        "add_stream" => text_stream_item::<i32>(&text, cs).await?,
-                        _ => panic!(),
-                    }
-                }
+                // if let Some(cs) = cs {
+                //     match cs.to_function.as_str() {
+                //         "add_stream" => text_stream_item::<i32>(&text, cs).await?,
+                //         _ => panic!(),
+                //     }
+                // }
 
                 Ok(())
             }
             MessageType::Completion => {
-                let message: Id = serde_json::from_str(&text)?;
+                let message: OptionalId = serde_json::from_str(&text)?;
 
-                let mut guard = self.client_streams_mapping.lock().await;
-                let cs = (*guard).remove(&message.invocation_id);
+                // let mut guard = self.client_streams_mapping.lock().await;
+                // let cs = (*guard).remove(&message.invocation_id);
 
-                if let Some(cs) = cs {
-                    drop(cs); // should terminate sender
-                }
+                // if let Some(cs) = cs {
+                //     drop(cs); // should terminate sender
+                // }
 
                 Ok(())
             }
@@ -540,16 +363,13 @@ where
 
 // ============= Extractors
 
-#[derive(Deserialize, Debug)]
-pub struct Args<T>(T);
-
 // ============= Domain
 
 pub fn non_blocking() {
     // nothing
 }
 
-pub fn identity(Args(a): Args<i32>) -> i32 {
+pub async fn identity(Args(a): Args<i32>) -> i32 {
     a
 }
 
