@@ -82,11 +82,14 @@ impl HubInvoker {
     {
         let text = text.trim_end_matches(WEIRD_ENDING).to_owned();
 
-        match serde_json::from_str::<Type>(&text)?.message_type {
-            MessageType::Invocation => {
-                let target: Target = serde_json::from_str(&text)?;
+        let RoutingData {
+            target,
+            message_type,
+        } = serde_json::from_str(&text)?;
 
-                match target.target.as_str() {
+        match message_type {
+            MessageType::Invocation => {
+                match target.unwrap_or("".to_string()).as_str() {
                     "non_blocking" => {
                         let invocation: Invocation<()> = serde_json::from_str(&text)?;
 
@@ -161,8 +164,7 @@ impl HubInvoker {
                 }
             }
             MessageType::StreamInvocation => {
-                let target: Target = serde_json::from_str(&text)?;
-                match target.target.as_str() {
+                match target.unwrap_or_default().as_str() {
                     // "stream" => {
                     //     text_stream_invocation(
                     //         &text,

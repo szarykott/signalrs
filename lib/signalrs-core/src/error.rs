@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::response::HubResponseStruct;
+use crate::{request::StreamItemPayload, response::HubResponseStruct};
 
 #[derive(Error, Debug)]
 pub enum SignalRError {
@@ -8,6 +8,8 @@ pub enum SignalRError {
     JsonError(#[from] serde_json::Error),
     #[error("Channel error")]
     ChannelError(#[from] flume::SendError<HubResponseStruct>),
+    #[error("Channel error")]
+    ChannelError2(#[from] flume::SendError<StreamItemPayload>),
     #[error("Unspecified error")]
     UnnspecifiedError,
 }

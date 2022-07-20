@@ -142,7 +142,7 @@ pub struct StreamItem<I> {
     r#type: MessageType,
     #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<HashMap<String, String>>,
-    invocation_id: String,
+    pub invocation_id: String,
     pub item: I,
 }
 
@@ -278,19 +278,21 @@ pub struct Id {
     pub invocation_id: String,
 }
 
-#[derive(Deserialize, Debug, Clone, Copy)]
-pub struct Type {
+#[derive(Deserialize, Debug, Clone)]
+pub struct RoutingData {
+    pub target: Option<String>,
     #[serde(rename = "type")]
     pub message_type: MessageType,
-}
-
-#[derive(Deserialize, Debug, Clone)]
-pub struct Target {
-    pub target: String,
 }
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Arguments<T> {
     pub arguments: Option<T>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct ClientStreams {
+    #[serde(rename = "streamIds")]
+    pub stream_ids: Option<Vec<String>>,
 }

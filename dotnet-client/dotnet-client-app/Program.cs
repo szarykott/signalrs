@@ -164,7 +164,7 @@ async Task InvokeStreamCancel(HubConnection connection)
 
 async Task InvokeClientSideStreaming(HubConnection connection)
 {
-    var response = await connection.InvokeAsync<int>("add_stream", LinesAsync(), LinesAsync());
+    var response = await connection.InvokeAsync<int>("add_stream", LinesAsync());
     Console.WriteLine($"'add_stream' finished with {response}");
 }
 

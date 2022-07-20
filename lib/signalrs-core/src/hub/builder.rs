@@ -1,6 +1,7 @@
 use super::Hub;
 use crate::{
     error::SignalRError,
+    extract::FromRequest,
     handler::{Callable, Handler, IntoCallable},
 };
 use futures::Future;
@@ -33,9 +34,23 @@ impl HubBuilder {
             + Clone
             + Send
             + Sync,
-        Args: DeserializeOwned + Send + Sync + 'static,
+        Args: FromRequest + Send + Sync + 'static,
     {
-        let callable: IntoCallable<_, Args> = IntoCallable::new(handler);
+        let callable: IntoCallable<_, Args> = IntoCallable::new(handler, false);
+        self.methods.insert(name.to_owned(), Arc::new(callable));
+        self
+    }
+
+    pub fn streaming_method<H, Args>(mut self, name: &str, handler: H) -> Self
+    where
+        H: Handler<Args, Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>>
+            + 'static
+            + Clone
+            + Send
+            + Sync,
+        Args: FromRequest + Send + Sync + 'static,
+    {
+        let callable: IntoCallable<_, Args> = IntoCallable::new(handler, true);
         self.methods.insert(name.to_owned(), Arc::new(callable));
         self
     }

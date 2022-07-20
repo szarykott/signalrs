@@ -37,14 +37,14 @@ where
     Fn: FnOnce(T1) -> Fut + Send + 'static,
     Fut: Future<Output = Ret> + Send,
     Ret: HubResponse + Send + 'static,
-    T1: DeserializeOwned + FromRequest + Send + 'static,
+    T1: FromRequest + Send + 'static,
 {
     type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
 
-    fn call(self, request: HubRequest, output: ResponseSink, stream: bool) -> Self::Future {
+    fn call(self, mut request: HubRequest, output: ResponseSink, stream: bool) -> Self::Future {
         if stream {
             return Box::pin(async move {
-                let t1 = FromRequest::try_from_request(&request)?;
+                let t1 = FromRequest::try_from_request(&mut request)?;
 
                 let result = (self)(t1).await;
 
@@ -67,7 +67,7 @@ where
             });
         } else {
             Box::pin(async move {
-                let t1 = FromRequest::try_from_request(&request)?;
+                let t1 = FromRequest::try_from_request(&mut request)?;
 
                 let result = (self)(t1).await;
 
@@ -85,19 +85,21 @@ where
 pub trait Callable {
     type Future: Future<Output = Result<(), SignalRError>> + Send;
 
-    fn call(&self, request: HubRequest, output: ResponseSink, stream: bool) -> Self::Future;
+    fn call(&self, request: HubRequest, output: ResponseSink) -> Self::Future;
 }
 
 #[derive(Debug)]
 pub struct IntoCallable<H, T> {
     handler: H,
+    stream: bool,
     _marker: PhantomData<T>,
 }
 
 impl<H, T> IntoCallable<H, T> {
-    pub fn new(handler: H) -> Self {
+    pub fn new(handler: H, stream: bool) -> Self {
         IntoCallable {
             handler,
+            stream,
             _marker: Default::default(),
         }
     }
@@ -109,8 +111,8 @@ where
 {
     type Future = <H as Handler<T>>::Future;
 
-    fn call(&self, request: HubRequest, output: ResponseSink, stream: bool) -> Self::Future {
+    fn call(&self, request: HubRequest, output: ResponseSink) -> Self::Future {
         let handler = self.handler.clone();
-        handler.call(request, output, stream)
+        handler.call(request, output, self.stream)
     }
 }

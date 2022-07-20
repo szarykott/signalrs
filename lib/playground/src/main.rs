@@ -12,7 +12,7 @@ use axum::{
 };
 use futures::{select, sink::SinkExt, stream::StreamExt, FutureExt};
 use signalrs_core::{
-    extract::Args,
+    extract::{Args, StreamArgs},
     hub::{builder::HubBuilder, Hub},
     negotiate::{NegotiateResponseV0, TransportSpec},
     response::{HubResponse, HubResponseStruct, HubStream, ResponseSink},
@@ -49,7 +49,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let hub_builder = HubBuilder::new()
         .method("add", add)
-        .method("stream", stream);
+        .method("add_stream", add_stream)
+        .streaming_method("stream", stream);
 
     let invoker = Arc::new(hub_builder.build());
 
@@ -157,4 +158,13 @@ pub async fn stream(Args(count): Args<usize>) -> impl HubResponse {
             yield i;
         }
     })
+}
+
+pub async fn add_stream(mut input: StreamArgs<i32>) -> impl HubResponse {
+    let mut result = Vec::new();
+    while let Some(i) = input.0.next().await {
+        result.push(i);
+    }
+
+    result.into_iter().sum::<i32>()
 }
