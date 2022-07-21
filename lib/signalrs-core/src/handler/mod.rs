@@ -4,16 +4,16 @@ use futures::Future;
 
 use crate::{
     error::SignalRError,
-    extract::FromRequest,
+    extract::FromInvocation,
     protocol::{Id, OptionalId},
-    request::HubRequest,
+    request::HubInvocation,
     response::{HubResponse, ResponseSink},
 };
 
 pub trait Handler<T> {
     type Future: Future<Output = Result<(), SignalRError>> + Send;
 
-    fn call(self, request: HubRequest, output: ResponseSink, stream: bool) -> Self::Future;
+    fn call(self, request: HubInvocation, output: ResponseSink, stream: bool) -> Self::Future;
 }
 
 //     // let result = hub_function(arguments).forward(invocation_id.clone(), output);
@@ -36,14 +36,14 @@ where
     Fn: FnOnce(T1) -> Fut + Send + 'static,
     Fut: Future<Output = Ret> + Send,
     Ret: HubResponse + Send + 'static,
-    T1: FromRequest + Send + 'static,
+    T1: FromInvocation + Send + 'static,
 {
     type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
 
-    fn call(self, mut request: HubRequest, output: ResponseSink, stream: bool) -> Self::Future {
+    fn call(self, mut request: HubInvocation, output: ResponseSink, stream: bool) -> Self::Future {
         if stream {
             return Box::pin(async move {
-                let t1 = FromRequest::try_from_request(&mut request)?;
+                let t1 = FromInvocation::try_from_request(&mut request)?;
 
                 let result = (self)(t1).await;
 
@@ -66,7 +66,7 @@ where
             });
         } else {
             Box::pin(async move {
-                let t1 = FromRequest::try_from_request(&mut request)?;
+                let t1 = FromInvocation::try_from_request(&mut request)?;
 
                 let result = (self)(t1).await;
 
@@ -84,7 +84,7 @@ where
 pub trait Callable {
     type Future: Future<Output = Result<(), SignalRError>> + Send;
 
-    fn call(&self, request: HubRequest, output: ResponseSink) -> Self::Future;
+    fn call(&self, request: HubInvocation, output: ResponseSink) -> Self::Future;
 }
 
 #[derive(Debug)]
@@ -110,7 +110,7 @@ where
 {
     type Future = <H as Handler<T>>::Future;
 
-    fn call(&self, request: HubRequest, output: ResponseSink) -> Self::Future {
+    fn call(&self, request: HubInvocation, output: ResponseSink) -> Self::Future {
         let handler = self.handler.clone();
         handler.call(request, output, self.stream)
     }

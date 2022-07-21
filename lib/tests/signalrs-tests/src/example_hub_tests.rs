@@ -88,7 +88,7 @@ async fn batched_invocation() {
     let invocation = protocol::Invocation::new(
         Some("123".to_string()),
         "batched".to_string(),
-        Some(5usize),
+        Some((5usize,)),
     );
 
     let request = serde_json::to_string(&invocation).unwrap();
@@ -126,9 +126,11 @@ async fn stream_invocation() {
     let invocation = protocol::StreamInvocation::new(
         "123".to_string(),
         "stream".to_string(),
-        Some(3usize),
+        Some((3usize,)),
     );
     let request = serde_json::to_string(&invocation).unwrap();
+
+    dbg!(request.clone());
 
     let (tx, rx) = flume::bounded(10);
 
@@ -180,7 +182,7 @@ async fn stream_failure_invocation() {
     let invocation = protocol::StreamInvocation::new(
         "123".to_string(),
         "stream_failure".to_string(),
-        Some(3usize),
+        Some((3usize,)),
     );
 
     let request = serde_json::to_string(&invocation).unwrap();

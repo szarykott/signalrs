@@ -1,4 +1,5 @@
 use std::{sync::Arc, task::Poll};
+use thiserror::Error;
 
 use flume::r#async::RecvStream;
 use futures::{stream::Map, Stream, StreamExt};
@@ -8,14 +9,32 @@ use crate::{
     error::SignalRError,
     hub::ClientSink,
     protocol::{Arguments, ClientStreams},
-    request::{HubRequest, Payload, StreamItemPayload},
+    request::{HubInvocation, Payload, StreamItemPayload},
 };
 
-pub trait FromRequest
+pub trait FromInvocation
 where
     Self: Sized,
 {
-    fn try_from_request(request: &mut HubRequest) -> Result<Self, SignalRError>;
+    fn try_from_request(request: &mut HubInvocation) -> Result<Self, ExtractionError>;
+}
+// ============= Error
+
+#[derive(Debug, Error)]
+pub enum ExtractionError {
+    #[error("Arguments not provided the in invocation")]
+    MissingArgs,
+    #[error("Stream not provided the in invocation")]
+    MissingStreamIds,
+    #[error("Number of requested client streams exceeds the number of streams in the invocation")]
+    NotEnoughStreamIds,
+    #[error("JSON deserialization error")]
+    JsonError {
+        #[from] 
+        source: serde_json::Error
+    },
+    #[error("An error occured : {0}")]
+    Other(String)
 }
 
 // ============= Args
@@ -23,11 +42,11 @@ where
 #[derive(Deserialize, Debug)]
 pub struct Args<T>(pub T);
 
-impl<T> FromRequest for Args<T>
+impl<T> FromInvocation for Args<T>
 where
     T: DeserializeOwned,
 {
-    fn try_from_request(request: &mut HubRequest) -> Result<Self, SignalRError> {
+    fn try_from_request(request: &mut HubInvocation) -> Result<Self, ExtractionError> {
         match &request.payload {
             Payload::Text(text) => {
                 let arguments: Arguments<serde_json::Value> = serde_json::from_str(text.as_str())?;
@@ -40,16 +59,16 @@ where
                         } else if args.len() > 1 {
                             serde_json::from_value(serde_json::Value::Array(args))
                         } else {
-                            return Err(SignalRError::UnnspecifiedError);
+                            return Err(ExtractionError::MissingArgs);
                         }
                     }
-                    _ => return Err(SignalRError::UnnspecifiedError),
+                    _ => return Err(ExtractionError::MissingArgs),
                 }?;
 
                 if let Some(arguments) = arguments {
                     Ok(Args(arguments))
                 } else {
-                    Err(SignalRError::UnnspecifiedError)
+                    Err(ExtractionError::MissingArgs)
                 }
             }
             _ => unimplemented!(),
@@ -92,11 +111,11 @@ where
     }
 }
 
-impl<T> FromRequest for StreamArgs<T>
+impl<T> FromInvocation for StreamArgs<T>
 where
     T: DeserializeOwned,
 {
-    fn try_from_request(request: &mut HubRequest) -> Result<Self, SignalRError> {
+    fn try_from_request(request: &mut HubInvocation) -> Result<Self, ExtractionError> {
         match &request.payload {
             Payload::Text(payload) => {
                 let client_streams: ClientStreams = serde_json::from_str(payload)?;
@@ -107,7 +126,7 @@ where
 
                         let stream_id = match stream_ids.get(index) {
                             Some(stream_id) => stream_id.clone(),
-                            None => return Err(SignalRError::UnnspecifiedError),
+                            None => return Err(ExtractionError::NotEnoughStreamIds),
                         };
 
                         let (tx, rx) = flume::bounded::<StreamItemPayload>(100);
@@ -131,7 +150,7 @@ where
 
                         return Ok(StreamArgs(client_stream));
                     }
-                    None => return Err(SignalRError::UnnspecifiedError),
+                    None => return Err(ExtractionError::MissingStreamIds),
                 }
             }
             Payload::Binary(_) => unimplemented!(),

@@ -6,19 +6,19 @@ use tokio::sync::Mutex;
 
 use crate::{error::SignalRError, hub::ClientSink};
 
-pub struct HubRequest {
+pub struct HubInvocation {
     pub payload: Payload,
     pub hub_state: HubState,
     pub pipeline_state: PipelineState,
 }
 
-impl HubRequest {
+impl HubInvocation {
     pub fn text(
         payload: String,
         inflight_invocations: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
         client_streams_mapping: Arc<Mutex<HashMap<String, ClientSink>>>,
     ) -> Self {
-        HubRequest {
+        HubInvocation {
             payload: Payload::Text(payload),
             hub_state: HubState {
                 inflight_invocations,
@@ -63,7 +63,7 @@ pub struct PipelineState {
     pub next_stream_id_index: usize,
 }
 
-impl HubRequest {
+impl HubInvocation {
     pub fn unwrap_text(&self) -> String {
         match &self.payload {
             Payload::Text(v) => v.clone(),

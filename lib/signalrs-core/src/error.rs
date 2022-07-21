@@ -1,15 +1,28 @@
 use thiserror::Error;
 
-use crate::{request::StreamItemPayload, response::HubResponseStruct};
+use crate::{request::StreamItemPayload, response::HubResponseStruct, extract::ExtractionError};
 
 #[derive(Error, Debug)]
 pub enum SignalRError {
     #[error("JSON deserialization error")]
-    JsonError(#[from] serde_json::Error),
+    JsonError {
+        #[from]
+        source: serde_json::Error
+    },
     #[error("Channel error")]
-    ChannelError(#[from] flume::SendError<HubResponseStruct>),
+    ChannelError {
+        #[from] 
+        source: flume::SendError<HubResponseStruct>
+    },
     #[error("Channel error")]
-    ChannelError2(#[from] flume::SendError<StreamItemPayload>),
+    ChannelError2{
+        #[from] 
+        source: flume::SendError<StreamItemPayload>},
+    #[error("An error occured during arguments extraction")]
+    ExtrationError {
+        #[from]
+        source: ExtractionError
+    },
     #[error("Unspecified error")]
     UnnspecifiedError,
 }

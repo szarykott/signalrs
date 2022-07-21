@@ -9,7 +9,7 @@ use crate::{
     error::SignalRError,
     handler::Callable,
     protocol::*,
-    request::{HubRequest, StreamItemPayload},
+    request::{HubInvocation, StreamItemPayload},
     response::ResponseSink,
 };
 
@@ -74,7 +74,7 @@ impl Hub {
         match message_type {
             MessageType::Invocation | MessageType::StreamInvocation => {
                 if let Some(callable) = self.methods.get(&target.unwrap_or_default()) {
-                    let request = HubRequest::text(
+                    let request = HubInvocation::text(
                         text,
                         Arc::clone(&self.inflight_invocations),
                         Arc::clone(&self.client_streams_mapping),

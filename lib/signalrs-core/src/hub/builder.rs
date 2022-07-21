@@ -1,7 +1,7 @@
 use super::Hub;
 use crate::{
     error::SignalRError,
-    extract::FromRequest,
+    extract::FromInvocation,
     handler::{Callable, Handler, IntoCallable},
 };
 use futures::Future;
@@ -33,7 +33,7 @@ impl HubBuilder {
             + Clone
             + Send
             + Sync,
-        Args: FromRequest + Send + Sync + 'static,
+        Args: FromInvocation + Send + Sync + 'static,
     {
         let callable: IntoCallable<_, Args> = IntoCallable::new(handler, false);
         self.methods.insert(name.to_owned(), Arc::new(callable));
@@ -47,7 +47,7 @@ impl HubBuilder {
             + Clone
             + Send
             + Sync,
-        Args: FromRequest + Send + Sync + 'static,
+        Args: FromInvocation + Send + Sync + 'static,
     {
         let callable: IntoCallable<_, Args> = IntoCallable::new(handler, true);
         self.methods.insert(name.to_owned(), Arc::new(callable));
