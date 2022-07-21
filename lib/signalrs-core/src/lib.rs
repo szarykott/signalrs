@@ -1,5 +1,4 @@
-#![warn(missing_debug_implementations)]
-#![allow(dead_code)]
+#[deny(unsafe_code)]
 
 pub mod error;
 pub mod extensions;

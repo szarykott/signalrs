@@ -1,9 +1,8 @@
-use std::{marker::PhantomData, sync::Arc, task::Poll};
+use std::{sync::Arc, task::Poll};
 
 use flume::r#async::RecvStream;
-use futures::{stream::Map, FutureExt, Stream, StreamExt};
+use futures::{stream::Map, Stream, StreamExt};
 use serde::{de::DeserializeOwned, Deserialize};
-use tokio::sync::MutexGuard;
 
 use crate::{
     error::SignalRError,

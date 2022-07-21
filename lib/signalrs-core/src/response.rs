@@ -13,12 +13,6 @@ use serde::Serialize;
 
 const WEIRD_ENDING: &str = "\u{001E}";
 
-#[derive(Debug)]
-pub enum SignalRResponse<R> {
-    Completion(Completion<R>),
-    StreamItem(StreamItem<R>),
-}
-
 #[non_exhaustive]
 #[derive(Debug, Clone)]
 pub enum HubResponseStruct {
@@ -140,7 +134,7 @@ where
 }
 
 #[async_trait::async_trait]
-impl<R> HubResponse for Result<R, String>
+impl<R> HubResponse for Result<R, String> // FIXME: String, rly?
 where
     R: HubResponse + Send + Serialize,
 {
@@ -191,28 +185,6 @@ impl HubStream {
         I: Send + Serialize,
     {
         FallibleHubStream(stream)
-    }
-}
-
-impl<In, Itm> InfallibleHubStream<In>
-where
-    In: Stream<Item = Itm>,
-    <In as Stream>::Item: Serialize,
-{
-    pub fn new<Out>(
-        invocation_id: String,
-        inner: In,
-    ) -> InfallibleHubStream<impl Stream<Item = String>> {
-        let mapped = inner
-            .zip(futures::stream::repeat(invocation_id.clone()))
-            .map(|(e, id)| StreamItem::new(id, e))
-            .map(|si| serde_json::to_string(&si).unwrap() + WEIRD_ENDING)
-            .chain(futures::stream::once(async {
-                let completion: Completion<usize> = Completion::new(invocation_id, None, None);
-                serde_json::to_string(&completion).unwrap() + WEIRD_ENDING
-            }));
-
-        InfallibleHubStream { inner: mapped }
     }
 }
 

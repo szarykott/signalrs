@@ -1,4 +1,4 @@
-use std::{any::Any, collections::HashMap, pin::Pin, sync::Arc};
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 use flume::r#async::SendSink;
 use futures::{Future, SinkExt};
@@ -9,7 +9,7 @@ use crate::{
     error::SignalRError,
     handler::Callable,
     protocol::*,
-    request::{HubRequest, Payload, StreamItemPayload},
+    request::{HubRequest, StreamItemPayload},
     response::ResponseSink,
 };
 

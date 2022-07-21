@@ -3,29 +3,38 @@ use futures::{
     sink::Sink,
     stream::{Stream, StreamExt},
 };
-use playground::example_hub;
-use signalrs_core::protocol;
+use signalrs_core::{protocol, extract::Args, hub::builder::HubBuilder, response::{ResponseSink, HubStream, HubResponse}, error::SignalRError};
+use async_stream::stream;
 
 const WEIRD_ENDING: &str = "\u{001E}";
 
 #[tokio::test]
-async fn example_hub_simple_invocation_succesfull() {
-    let hub = example_hub::HubInvoker::new();
+async fn simple_invocation_succesfull() {
+    async fn add(Args((a,b)) : Args<(i32,i32)>) -> i32 {
+        a + b
+    }
+
+    let hub = HubBuilder::new().method("add", add).build();
 
     let invocation = protocol::Invocation::new(
         Some("123".to_string()),
         "add".to_string(),
         Some((1i32, 2i32)),
     );
+
     let request = serde_json::to_string(&invocation).unwrap();
 
     let (tx, rx) = flume::bounded(1);
 
-    hub.invoke_text(request, tx.into_sink().clone())
+    let sink = ResponseSink::new(tx.into_sink());
+
+
+    hub.invoke_text(request, sink)
         .await
         .unwrap();
 
-    let response = rx.recv().unwrap().strip_record_separator();
+
+    let response = rx.recv().unwrap().unwrap_text().strip_record_separator();
     let response: protocol::Completion<i32> = serde_json::from_str(&response).unwrap();
 
     let expected_response = protocol::Completion::new("123".to_string(), Some(3), None);
@@ -34,21 +43,30 @@ async fn example_hub_simple_invocation_succesfull() {
 }
 
 #[tokio::test]
-async fn example_hub_simple_invocation_failed() {
-    let hub = example_hub::HubInvoker::new();
+async fn simple_invocation_failed() {
+    async fn add(Args((_,_)) : Args<(i32,i32)>) -> Result<(), String> {
+        Err("An error!".to_owned())
+    }
+
+    let hub = HubBuilder::new().method("add", add).build();
 
     let invocation = protocol::Invocation::new(
         Some("123".to_string()),
-        "single_result_failure".to_string(),
+        "add".to_string(),
         Some((1i32, 2i32)),
     );
+
     let request = serde_json::to_string(&invocation).unwrap();
 
     let (tx, rx) = flume::bounded(1);
 
-    hub.invoke_text(request, tx.into_sink()).await.unwrap();
+    let sink = ResponseSink::new(tx.into_sink());
 
-    let response = rx.recv().unwrap().strip_record_separator();
+
+    hub.invoke_text(request, sink).await.unwrap();
+
+
+    let response = rx.recv().unwrap().unwrap_text().strip_record_separator();
     let response: protocol::Completion<i32> = serde_json::from_str(&response).unwrap();
 
     let expected_response =
@@ -58,21 +76,32 @@ async fn example_hub_simple_invocation_failed() {
 }
 
 #[tokio::test]
-async fn example_hub_batched_invocation() {
-    let hub = example_hub::HubInvoker::new();
+async fn batched_invocation() {
+    async fn batched(Args(count): Args<usize>) -> Vec<usize> {
+        std::iter::successors(Some(0usize), |p| Some(p + 1))
+            .take(count)
+            .collect::<Vec<usize>>()
+    }
+    
+    let hub = HubBuilder::new().method("batched", batched).build();
 
     let invocation = protocol::Invocation::new(
         Some("123".to_string()),
         "batched".to_string(),
-        Some((5usize, ())),
+        Some(5usize),
     );
+
     let request = serde_json::to_string(&invocation).unwrap();
 
     let (tx, rx) = flume::bounded(1);
 
-    hub.invoke_text(request, tx.into_sink()).await.unwrap();
+    let sink = ResponseSink::new(tx.into_sink());
 
-    let response = rx.recv().unwrap().strip_record_separator();
+
+    hub.invoke_text(request, sink).await.unwrap();
+
+
+    let response = rx.recv().unwrap().unwrap_text().strip_record_separator();
     let response: protocol::Completion<Vec<usize>> = serde_json::from_str(&response).unwrap();
 
     let expected_response =
@@ -82,26 +111,39 @@ async fn example_hub_batched_invocation() {
 }
 
 #[tokio::test]
-async fn example_hub_stream_invocation() {
-    let hub = example_hub::HubInvoker::new();
+async fn stream_invocation() {
+    async fn stream(Args(count): Args<usize>) -> impl HubResponse {
+        HubStream::infallible(stream! {
+            for i in 0..count {
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                yield i;
+            }
+        })
+    }
+
+    let hub = HubBuilder::new().method("stream", stream).build();
 
     let invocation = protocol::StreamInvocation::new(
         "123".to_string(),
         "stream".to_string(),
-        Some((3usize, ())),
+        Some(3usize),
     );
     let request = serde_json::to_string(&invocation).unwrap();
 
     let (tx, rx) = flume::bounded(10);
 
-    hub.invoke_text(request, tx.into_sink()).await.unwrap();
+    let sink = ResponseSink::new(tx.into_sink());
+
+
+    hub.invoke_text(request, sink).await.unwrap();
+
 
     let mut response = rx.into_stream();
 
-    let f1 = response.next().await.unwrap().strip_record_separator();
-    let f2 = response.next().await.unwrap().strip_record_separator();
-    let f3 = response.next().await.unwrap().strip_record_separator();
-    let completion = response.next().await.unwrap().strip_record_separator();
+    let f1 = response.next().await.unwrap().unwrap_text().strip_record_separator();
+    let f2 = response.next().await.unwrap().unwrap_text().strip_record_separator();
+    let f3 = response.next().await.unwrap().unwrap_text().strip_record_separator();
+    let completion = response.next().await.unwrap().unwrap_text().strip_record_separator();
     let none = response.next().await;
 
     let expected_f1 = protocol::StreamItem::new("123".to_string(), 0usize);
@@ -122,25 +164,39 @@ async fn example_hub_stream_invocation() {
 }
 
 #[tokio::test]
-async fn example_hub_stream_failure_invocation() {
-    let hub = example_hub::HubInvoker::new();
+async fn stream_failure_invocation() {
+    async fn stream_failure(Args(count): Args<usize>) -> impl HubResponse {
+        HubStream::fallible(stream! {
+            for i in 0..count {
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                yield Ok(i);
+            }
+            yield Err("Ran out of data!".to_string())
+        })
+    }
+
+    let hub = HubBuilder::new().method("stream_failure", stream_failure).build();
 
     let invocation = protocol::StreamInvocation::new(
         "123".to_string(),
         "stream_failure".to_string(),
-        Some((3usize, ())),
+        Some(3usize),
     );
+
     let request = serde_json::to_string(&invocation).unwrap();
 
     let (tx, rx) = flume::bounded(10);
 
-    hub.invoke_text(request, tx.into_sink()).await.unwrap();
+    let sink = ResponseSink::new(tx.into_sink());
+
+
+    hub.invoke_text(request, sink).await.unwrap();
 
     let mut response = rx.into_stream();
-    let f1 = response.next().await.unwrap().strip_record_separator();
-    let f2 = response.next().await.unwrap().strip_record_separator();
-    let f3 = response.next().await.unwrap().strip_record_separator();
-    let completion = response.next().await.unwrap().strip_record_separator();
+    let f1 = response.next().await.unwrap().unwrap_text().strip_record_separator();
+    let f2 = response.next().await.unwrap().unwrap_text().strip_record_separator();
+    let f3 = response.next().await.unwrap().unwrap_text().strip_record_separator();
+    let completion = response.next().await.unwrap().unwrap_text().strip_record_separator();
     let none = response.next().await;
 
     let expected_f1 = protocol::StreamItem::new("123".to_string(), 0usize);

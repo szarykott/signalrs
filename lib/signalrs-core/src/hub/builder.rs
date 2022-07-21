@@ -5,7 +5,6 @@ use crate::{
     handler::{Callable, Handler, IntoCallable},
 };
 use futures::Future;
-use serde::de::DeserializeOwned;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 #[allow(missing_debug_implementations)]

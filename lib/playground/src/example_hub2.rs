@@ -1,25 +1,6 @@
-use async_stream::stream;
-use flume::r#async::SendSink;
-use futures::{Sink, SinkExt, Stream, StreamExt};
-use serde;
-use serde::Deserialize;
-use signalrs_core::extract::Args;
+use futures::{Stream, StreamExt};
 use signalrs_core::{protocol::*, response::*};
-use std::{any::Any, collections::HashMap, fmt::Debug, sync::Arc};
-use tokio;
-use tokio::sync::Mutex;
 
-const WEIRD_ENDING: &str = "\u{001E}";
-
-pub struct HubInvoker {
-    ongoing_invocations: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
-    client_streams_mapping: Arc<Mutex<HashMap<String, ClientStream>>>,
-}
-
-pub struct ClientStream {
-    to_function: String,
-    sink: Box<dyn Any + Send>,
-}
 
 pub trait SingleResponse<Ret> {
     fn into_completion() -> Completion<Ret>;
@@ -36,208 +17,208 @@ pub trait StreamingResponse<Ret>: private::Sealed {
 
 // ======== Handshake
 
-impl HubInvoker {
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        HubInvoker {
-            ongoing_invocations: Arc::new(Mutex::new(HashMap::new())),
-            client_streams_mapping: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
+// impl HubInvoker {
+//     #[allow(clippy::new_without_default)]
+//     pub fn new() -> Self {
+//         HubInvoker {
+//             ongoing_invocations: Arc::new(Mutex::new(HashMap::new())),
+//             client_streams_mapping: Arc::new(Mutex::new(HashMap::new())),
+//         }
+//     }
 
-    pub fn handshake(&self, input: &str) -> String {
-        let input = input.trim_end_matches(WEIRD_ENDING);
+//     pub fn handshake(&self, input: &str) -> String {
+//         let input = input.trim_end_matches(WEIRD_ENDING);
 
-        let request = serde_json::from_str::<HandshakeRequest>(input);
+//         let request = serde_json::from_str::<HandshakeRequest>(input);
 
-        let response = match request {
-            Ok(request) => {
-                if request.is_json() {
-                    HandshakeResponse::no_error()
-                } else {
-                    HandshakeResponse::error("Unsupported protocol")
-                }
-            }
-            Err(e) => HandshakeResponse::error(e),
-        };
+//         let response = match request {
+//             Ok(request) => {
+//                 if request.is_json() {
+//                     HandshakeResponse::no_error()
+//                 } else {
+//                     HandshakeResponse::error("Unsupported protocol")
+//                 }
+//             }
+//             Err(e) => HandshakeResponse::error(e),
+//         };
 
-        match serde_json::to_string(&response) {
-            Ok(value) => format!("{}{}", value, WEIRD_ENDING),
-            Err(e) => e.to_string(),
-        }
-    }
-}
+//         match serde_json::to_string(&response) {
+//             Ok(value) => format!("{}{}", value, WEIRD_ENDING),
+//             Err(e) => e.to_string(),
+//         }
+//     }
+// }
 
 // ========= Operation
 
-impl HubInvoker {
-    pub async fn invoke_text<T>(
-        &self,
-        text: String,
-        mut output: T,
-    ) -> Result<(), Box<dyn std::error::Error>>
-    where
-        T: Sink<String> + Send + 'static + Unpin + Clone,
-        <T as Sink<String>>::Error: Debug + std::error::Error,
-    {
-        let text = text.trim_end_matches(WEIRD_ENDING).to_owned();
+// impl HubInvoker {
+//     pub async fn invoke_text<T>(
+//         &self,
+//         text: String,
+//         mut output: T,
+//     ) -> Result<(), Box<dyn std::error::Error>>
+//     where
+//         T: Sink<String> + Send + 'static + Unpin + Clone,
+//         <T as Sink<String>>::Error: Debug + std::error::Error,
+//     {
+//         let text = text.trim_end_matches(WEIRD_ENDING).to_owned();
 
-        let RoutingData {
-            target,
-            message_type,
-        } = serde_json::from_str(&text)?;
+//         let RoutingData {
+//             target,
+//             message_type,
+//         } = serde_json::from_str(&text)?;
 
-        match message_type {
-            MessageType::Invocation => {
-                match target.unwrap_or("".to_string()).as_str() {
-                    "non_blocking" => {
-                        let invocation: Invocation<()> = serde_json::from_str(&text)?;
+//         match message_type {
+//             MessageType::Invocation => {
+//                 match target.unwrap_or("".to_string()).as_str() {
+//                     "non_blocking" => {
+//                         let invocation: Invocation<()> = serde_json::from_str(&text)?;
 
-                        let result = non_blocking();
+//                         let result = non_blocking();
 
-                        if let Some(id) = invocation.invocation_id {
-                            // result.forward(id.clone(), output).await?;
-                            todo!()
-                        }
+//                         if let Some(id) = invocation.invocation_id {
+//                             // result.forward(id.clone(), output).await?;
+//                             todo!()
+//                         }
 
-                        Ok(())
-                    }
-                    "add" => {
-                        let mut invocation: Invocation<_> = serde_json::from_str(&text)?;
+//                         Ok(())
+//                     }
+//                     "add" => {
+//                         let mut invocation: Invocation<_> = serde_json::from_str(&text)?;
 
-                        let arguments = invocation.arguments.unwrap();
+//                         let arguments = invocation.arguments.unwrap();
 
-                        let result = add(arguments).into_stream();
+//                         let result = add(arguments).into_stream();
 
-                        if let Some(id) = invocation.invocation_id {
-                            // result.forward(id.clone(), output).await?;
-                            todo!()
-                        }
+//                         if let Some(id) = invocation.invocation_id {
+//                             // result.forward(id.clone(), output).await?;
+//                             todo!()
+//                         }
 
-                        Ok(())
-                    }
-                    "single_result_failure" => {
-                        let mut invocation: Invocation<_> = serde_json::from_str(&text)?;
+//                         Ok(())
+//                     }
+//                     "single_result_failure" => {
+//                         let mut invocation: Invocation<_> = serde_json::from_str(&text)?;
 
-                        let arguments = invocation.arguments.unwrap();
+//                         let arguments = invocation.arguments.unwrap();
 
-                        let result = single_result_failure(arguments);
+//                         let result = single_result_failure(arguments);
 
-                        if let Some(id) = invocation.invocation_id {
-                            // result.forward(id.clone(), output).await?;
-                            todo!()
-                        }
+//                         if let Some(id) = invocation.invocation_id {
+//                             // result.forward(id.clone(), output).await?;
+//                             todo!()
+//                         }
 
-                        Ok(())
-                    }
-                    "batched" => {
-                        let mut invocation: Invocation<_> = serde_json::from_str(&text)?;
+//                         Ok(())
+//                     }
+//                     "batched" => {
+//                         let mut invocation: Invocation<_> = serde_json::from_str(&text)?;
 
-                        let arguments = invocation.arguments.unwrap();
+//                         let arguments = invocation.arguments.unwrap();
 
-                        let result = batched(arguments);
+//                         let result = batched(arguments);
 
-                        if let Some(id) = invocation.invocation_id {
-                            // result.forward(id.clone(), output).await?;
-                            todo!()
-                        }
+//                         if let Some(id) = invocation.invocation_id {
+//                             // result.forward(id.clone(), output).await?;
+//                             todo!()
+//                         }
 
-                        Ok(())
-                    }
-                    "add_stream" => {
-                        // let hub = Arc::clone(&self.hub);
-                        // text_client_stream_invocation(
-                        //     "add_stream",
-                        //     &text,
-                        //     move |_: EmptyArgs, b| {
-                        //         // let result = async move { hub.add_stream(b).await };
-                        //         // HubFutureWrapper(result)
-                        //         todo!()
-                        //     },
-                        //     output,
-                        //     Arc::clone(&self.client_streams_mapping),
-                        // )
-                        // .await
-                        todo!()
-                    }
-                    _ => panic!(),
-                }
-            }
-            MessageType::StreamInvocation => {
-                match target.unwrap_or_default().as_str() {
-                    // "stream" => {
-                    //     text_stream_invocation(
-                    //         &text,
-                    //         |args: StreamArgs| stream(args.0),
-                    //         output,
-                    //         Arc::clone(&self.ongoing_invocations),
-                    //     )
-                    //     .await
-                    // }
-                    // "stream_failure" => {
-                    //     text_stream_invocation(
-                    //         &text,
-                    //         |args: StreamArgs| stream_failure(args.0),
-                    //         output,
-                    //         Arc::clone(&self.ongoing_invocations),
-                    //     )
-                    //     .await
-                    // }
-                    _ => panic!(),
-                }
-            }
-            MessageType::StreamItem => {
-                let message: OptionalId = serde_json::from_str(&text)?;
+//                         Ok(())
+//                     }
+//                     "add_stream" => {
+//                         // let hub = Arc::clone(&self.hub);
+//                         // text_client_stream_invocation(
+//                         //     "add_stream",
+//                         //     &text,
+//                         //     move |_: EmptyArgs, b| {
+//                         //         // let result = async move { hub.add_stream(b).await };
+//                         //         // HubFutureWrapper(result)
+//                         //         todo!()
+//                         //     },
+//                         //     output,
+//                         //     Arc::clone(&self.client_streams_mapping),
+//                         // )
+//                         // .await
+//                         todo!()
+//                     }
+//                     _ => panic!(),
+//                 }
+//             }
+//             MessageType::StreamInvocation => {
+//                 match target.unwrap_or_default().as_str() {
+//                     // "stream" => {
+//                     //     text_stream_invocation(
+//                     //         &text,
+//                     //         |args: StreamArgs| stream(args.0),
+//                     //         output,
+//                     //         Arc::clone(&self.ongoing_invocations),
+//                     //     )
+//                     //     .await
+//                     // }
+//                     // "stream_failure" => {
+//                     //     text_stream_invocation(
+//                     //         &text,
+//                     //         |args: StreamArgs| stream_failure(args.0),
+//                     //         output,
+//                     //         Arc::clone(&self.ongoing_invocations),
+//                     //     )
+//                     //     .await
+//                     // }
+//                     _ => panic!(),
+//                 }
+//             }
+//             MessageType::StreamItem => {
+//                 let message: OptionalId = serde_json::from_str(&text)?;
 
-                // let mut guard = self.client_streams_mapping.lock().await;
-                // let cs = (*guard).get_mut(&message.invocation_id);
+//                 // let mut guard = self.client_streams_mapping.lock().await;
+//                 // let cs = (*guard).get_mut(&message.invocation_id);
 
-                // if let Some(cs) = cs {
-                //     match cs.to_function.as_str() {
-                //         "add_stream" => text_stream_item::<i32>(&text, cs).await?,
-                //         _ => panic!(),
-                //     }
-                // }
+//                 // if let Some(cs) = cs {
+//                 //     match cs.to_function.as_str() {
+//                 //         "add_stream" => text_stream_item::<i32>(&text, cs).await?,
+//                 //         _ => panic!(),
+//                 //     }
+//                 // }
 
-                Ok(())
-            }
-            MessageType::Completion => {
-                let message: OptionalId = serde_json::from_str(&text)?;
+//                 Ok(())
+//             }
+//             MessageType::Completion => {
+//                 let message: OptionalId = serde_json::from_str(&text)?;
 
-                // let mut guard = self.client_streams_mapping.lock().await;
-                // let cs = (*guard).remove(&message.invocation_id);
+//                 // let mut guard = self.client_streams_mapping.lock().await;
+//                 // let cs = (*guard).remove(&message.invocation_id);
 
-                // if let Some(cs) = cs {
-                //     drop(cs); // should terminate sender
-                // }
+//                 // if let Some(cs) = cs {
+//                 //     drop(cs); // should terminate sender
+//                 // }
 
-                Ok(())
-            }
-            MessageType::CancelInvocation => {
-                let message: CancelInvocation = serde_json::from_str(&text)?;
+//                 Ok(())
+//             }
+//             MessageType::CancelInvocation => {
+//                 let message: CancelInvocation = serde_json::from_str(&text)?;
 
-                let mut guard = self.ongoing_invocations.lock().await;
-                match (*guard).remove(&message.invocation_id) {
-                    Some(handle) => handle.abort(),
-                    None => { /* all good */ }
-                };
+//                 let mut guard = self.ongoing_invocations.lock().await;
+//                 match (*guard).remove(&message.invocation_id) {
+//                     Some(handle) => handle.abort(),
+//                     None => { /* all good */ }
+//                 };
 
-                Ok(())
-            }
-            MessageType::Ping => {
-                let ping = Ping::new();
-                let s = serde_json::to_string(&ping)?;
-                output.send(s + WEIRD_ENDING).await?;
-                Ok(())
-            }
-            MessageType::Close => todo!(),
-            MessageType::Other => {
-                /* panik or kalm? */
-                todo!()
-            }
-        }
-    }
-}
+//                 Ok(())
+//             }
+//             MessageType::Ping => {
+//                 let ping = Ping::new();
+//                 let s = serde_json::to_string(&ping)?;
+//                 output.send(s + WEIRD_ENDING).await?;
+//                 Ok(())
+//             }
+//             MessageType::Close => todo!(),
+//             MessageType::Other => {
+//                 /* panik or kalm? */
+//                 todo!()
+//             }
+//         }
+//     }
+// }
 
 // async fn text_invocation<'de, T, R, F, S>(
 //     text: &'de str,
@@ -349,77 +330,65 @@ impl HubInvoker {
 //     Ok(())
 // }
 
-async fn text_stream_item<'de, T>(
-    text: &'de str,
-    cs: &mut ClientStream,
-) -> Result<(), Box<dyn std::error::Error>>
-where
-    T: Deserialize<'de> + 'static,
-{
-    let item: StreamItem<T> = serde_json::from_str(text)?;
-    let sink = cs.sink.downcast_mut::<SendSink<T>>().unwrap();
-    sink.send(item.item).await?;
+// async fn text_stream_item<'de, T>(
+//     text: &'de str,
+//     cs: &mut ClientStream,
+// ) -> Result<(), Box<dyn std::error::Error>>
+// where
+//     T: Deserialize<'de> + 'static,
+// {
+//     let item: StreamItem<T> = serde_json::from_str(text)?;
+//     let sink = cs.sink.downcast_mut::<SendSink<T>>().unwrap();
+//     sink.send(item.item).await?;
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 // ============= Extractors
 
 // ============= Domain
 
-pub fn non_blocking() {
-    // nothing
-}
+// pub fn non_blocking() {
+//     // nothing
+// }
 
-pub async fn identity(Args(a): Args<i32>) -> i32 {
-    a
-}
+// pub async fn identity(Args(a): Args<i32>) -> i32 {
+//     a
+// }
 
-pub fn add(Args((a, b)): Args<(i32, i32)>) -> i32 {
-    a + b
-}
+// pub fn add(Args((a, b)): Args<(i32, i32)>) -> i32 {
+//     a + b
+// }
 
-pub fn single_result_failure(Args((_, _)): Args<(u32, u32)>) -> Result<u32, String> {
-    Err::<u32, String>("An error!".to_string())
-}
+// pub fn single_result_failure(Args((_, _)): Args<(u32, u32)>) -> Result<u32, String> {
+//     Err::<u32, String>("An error!".to_string())
+// }
 
-pub fn batched(Args((count,)): Args<(usize,)>) -> Vec<usize> {
-    std::iter::successors(Some(0usize), |p| Some(p + 1))
-        .take(count)
-        .collect::<Vec<usize>>()
-}
+// pub fn batched(Args((count,)): Args<(usize,)>) -> Vec<usize> {
+//     std::iter::successors(Some(0usize), |p| Some(p + 1))
+//         .take(count)
+//         .collect::<Vec<usize>>()
+// }
 
-pub fn stream(count: usize) -> impl HubResponse {
-    HubStream::infallible(stream! {
-        for i in 0..count {
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            yield i;
-        }
-    })
-}
+// pub fn stream(count: usize) -> impl HubResponse {
+//     HubStream::infallible(stream! {
+//         for i in 0..count {
+//             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+//             yield i;
+//         }
+//     })
+// }
 
-pub fn stream_failure(count: usize) -> impl HubResponse {
-    HubStream::fallible(stream! {
-        for i in 0..count {
-            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            yield Ok(i);
-        }
-        yield Err("Ran out of data!".to_string())
-    })
-}
+// pub fn stream_failure(count: usize) -> impl HubResponse {
+//     HubStream::fallible(stream! {
+//         for i in 0..count {
+//             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+//             yield Ok(i);
+//         }
+//         yield Err("Ran out of data!".to_string())
+//     })
+// }
 
 pub async fn add_stream(input: impl Stream<Item = i32>) -> impl HubResponse {
     input.collect::<Vec<i32>>().await.into_iter().sum::<i32>()
 }
-
-#[derive(Deserialize, Clone, Debug)]
-struct BatchedArgs(usize, #[serde(default)] ());
-
-#[derive(Deserialize, Clone, Debug)]
-struct SingleResultFailureArgs(u32, u32);
-
-#[derive(Deserialize, Clone, Debug)]
-struct StreamArgs(usize, #[serde(default)] ());
-
-#[derive(Deserialize, Clone, Debug)]
-struct EmptyArgs(#[serde(default)] (), #[serde(default)] ());

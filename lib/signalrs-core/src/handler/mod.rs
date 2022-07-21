@@ -1,7 +1,6 @@
 use std::{marker::PhantomData, pin::Pin, sync::Arc};
 
 use futures::Future;
-use serde::de::DeserializeOwned;
 
 use crate::{
     error::SignalRError,
