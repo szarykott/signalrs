@@ -64,6 +64,10 @@ impl Hub {
     ) -> Result<(), SignalRError> {
         let text = text.trim_end_matches(WEIRD_ENDING).to_owned();
 
+        // TODO: implement mechanism to only enable one request from client / connection
+        // to be processed at the time
+        // then some things could be lockless down the stream
+
         let RoutingData {
             target,
             message_type,
