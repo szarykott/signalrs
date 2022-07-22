@@ -2,7 +2,10 @@ use super::Hub;
 use crate::{
     error::SignalRError,
     extract::FromInvocation,
-    handler::{Callable, Handler, IntoCallable},
+    handler::{
+        callable::{Callable, IntoCallable},
+        Handler,
+    },
 };
 use futures::Future;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
@@ -33,7 +36,7 @@ impl HubBuilder {
             + Clone
             + Send
             + Sync,
-        Args: FromInvocation + Send + Sync + 'static,
+        Args: Send + Sync + 'static,
     {
         let callable: IntoCallable<_, Args> = IntoCallable::new(handler, false);
         self.methods.insert(name.to_owned(), Arc::new(callable));
@@ -47,7 +50,7 @@ impl HubBuilder {
             + Clone
             + Send
             + Sync,
-        Args: FromInvocation + Send + Sync + 'static,
+        Args: Send + Sync + 'static,
     {
         let callable: IntoCallable<_, Args> = IntoCallable::new(handler, true);
         self.methods.insert(name.to_owned(), Arc::new(callable));

@@ -1,4 +1,6 @@
-use std::{marker::PhantomData, pin::Pin, sync::Arc};
+pub mod callable;
+
+use std::{pin::Pin, sync::Arc};
 
 use futures::Future;
 
@@ -13,105 +15,145 @@ use crate::{
 pub trait Handler<T> {
     type Future: Future<Output = Result<(), SignalRError>> + Send;
 
-    fn call(self, request: HubInvocation, output: ResponseSink, stream: bool) -> Self::Future;
+    fn call(self, request: HubInvocation, output: ResponseSink, cancellable: bool) -> Self::Future;
 }
 
-//     // let result = hub_function(arguments).forward(invocation_id.clone(), output);
+impl<Fn, Fut, Ret> Handler<()> for Fn
+where
+    Fn: FnOnce() -> Fut + Send + 'static,
+    Fut: Future<Output = Ret> + Send,
+    Ret: HubResponse + Send + 'static,
+{
+    type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
 
-//     todo!();
+    fn call(self, request: HubInvocation, output: ResponseSink, cancellable: bool) -> Self::Future {
+        Box::pin(async move {
+            if cancellable {
+                let result = (self)().await;
 
-//     // let invocation_id_clone = invocation_id.clone();
-//     // let invocations_clone = Arc::clone(&invocations);
-//     // let ongoing = tokio::spawn(async move {
-//     //     result.await.unwrap();
-//     //     let mut invocations = invocations_clone.lock().await;
-//     //     (*invocations).remove(&invocation_id_clone);
-//     // });
+                forward_cancellable(result, &request, output).await
+            } else {
+                let result = (self)().await;
 
-//     // let mut guard = invocations.lock().await;
-//     // (*guard).insert(invocation_id, ongoing);
+                forward_non_cancellable(result, &request, output).await
+            }
+        })
+    }
+}
 
 impl<Fn, Fut, Ret, T1> Handler<T1> for Fn
 where
     Fn: FnOnce(T1) -> Fut + Send + 'static,
     Fut: Future<Output = Ret> + Send,
     Ret: HubResponse + Send + 'static,
-    T1: FromInvocation + Send + 'static,
+    T1: FromInvocation + Send,
 {
     type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
 
-    fn call(self, mut request: HubInvocation, output: ResponseSink, stream: bool) -> Self::Future {
-        if stream {
-            return Box::pin(async move {
-                let t1 = FromInvocation::try_from_request(&mut request)?;
+    fn call(
+        self,
+        mut request: HubInvocation,
+        output: ResponseSink,
+        cancellable: bool,
+    ) -> Self::Future {
+        Box::pin(async move {
+            let t1 = FromInvocation::try_from_request(&mut request)?;
 
-                let result = (self)(t1).await;
+            let result = (self)(t1).await;
 
-                let id: Id = serde_json::from_str(&request.unwrap_text())?;
+            if cancellable {
+                forward_cancellable(result, &request, output).await
+            } else {
+                forward_non_cancellable(result, &request, output).await
+            }
+        })
+    }
+}
 
-                let inflight_map_arc = Arc::clone(&request.hub_state.inflight_invocations);
+macro_rules! impl_handler {
+    ($($ty:ident),+) => {
+        #[allow(non_snake_case)]
+        impl<Fn, Fut, Ret, $($ty,)+> Handler<($($ty,)+)> for Fn
+        where
+            Fn: FnOnce($($ty,)+) -> Fut + Send + 'static,
+            Fut: Future<Output = Ret> + Send,
+            Ret: HubResponse + Send + 'static,
+            $(
+                $ty: FromInvocation + Send,
+            )+
+        {
+            type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
 
-                let mut inflight_map = request.hub_state.inflight_invocations.lock().await;
+            fn call(
+                self,
+                mut request: HubInvocation,
+                output: ResponseSink,
+                cancellable: bool,
+            ) -> Self::Future {
+                Box::pin(async move {
+                    $(
+                        let $ty = FromInvocation::try_from_request(&mut request)?;
+                    )+
 
-                let id_clone = id.invocation_id.clone();
-                let inflight = tokio::spawn(async move {
-                    let _ = result.forward(id_clone.clone(), output).await; // TODO: How to forward error?
-                    let mut inflight_map = inflight_map_arc.lock().await;
-                    (*inflight_map).remove(&id_clone);
-                });
+                    let result = (self)($($ty,)+).await;
 
-                (*inflight_map).insert(id.invocation_id, inflight);
-
-                Ok(())
-            });
-        } else {
-            Box::pin(async move {
-                let t1 = FromInvocation::try_from_request(&mut request)?;
-
-                let result = (self)(t1).await;
-
-                let invocation: OptionalId = serde_json::from_str(&request.unwrap_text())?;
-                if let Some(id) = invocation.invocation_id {
-                    result.forward(id, output).await?;
-                }
-
-                Ok(())
-            })
+                    if cancellable {
+                        forward_cancellable(result, &request, output).await
+                    } else {
+                        forward_non_cancellable(result, &request, output).await
+                    }
+                })
+            }
         }
+    };
+}
+
+impl_handler!(T1, T2);
+impl_handler!(T1, T2, T3);
+impl_handler!(T1, T2, T3, T4);
+impl_handler!(T1, T2, T3, T4, T5);
+impl_handler!(T1, T2, T3, T4, T5, T6);
+impl_handler!(T1, T2, T3, T4, T5, T6, T7);
+impl_handler!(T1, T2, T3, T4, T5, T6, T7, T8);
+impl_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9);
+impl_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
+impl_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
+impl_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
+impl_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
+
+async fn forward_non_cancellable<Ret: HubResponse>(
+    result: Ret,
+    request: &HubInvocation,
+    output: ResponseSink,
+) -> Result<(), SignalRError> {
+    let invocation: OptionalId = serde_json::from_str(&request.unwrap_text())?;
+
+    if let Some(id) = invocation.invocation_id {
+        result.forward(id, output).await?;
     }
+
+    Ok(())
 }
 
-pub trait Callable {
-    type Future: Future<Output = Result<(), SignalRError>> + Send;
+async fn forward_cancellable<Ret: HubResponse + Send + 'static>(
+    result: Ret,
+    request: &HubInvocation,
+    output: ResponseSink,
+) -> Result<(), SignalRError> {
+    let id: Id = serde_json::from_str(&request.unwrap_text())?;
 
-    fn call(&self, request: HubInvocation, output: ResponseSink) -> Self::Future;
-}
+    let inflight_map_arc = Arc::clone(&request.hub_state.inflight_invocations);
 
-#[derive(Debug)]
-pub struct IntoCallable<H, T> {
-    handler: H,
-    stream: bool,
-    _marker: PhantomData<T>,
-}
+    let mut inflight_map = request.hub_state.inflight_invocations.lock().await;
 
-impl<H, T> IntoCallable<H, T> {
-    pub fn new(handler: H, stream: bool) -> Self {
-        IntoCallable {
-            handler,
-            stream,
-            _marker: Default::default(),
-        }
-    }
-}
+    let id_clone = id.invocation_id.clone();
+    let inflight = tokio::spawn(async move {
+        let _ = result.forward(id_clone.clone(), output).await; // TODO: How to forward error?
+        let mut inflight_map = inflight_map_arc.lock().await;
+        (*inflight_map).remove(&id_clone);
+    });
 
-impl<H, T> Callable for IntoCallable<H, T>
-where
-    H: Handler<T> + Clone,
-{
-    type Future = <H as Handler<T>>::Future;
+    (*inflight_map).insert(id.invocation_id, inflight);
 
-    fn call(&self, request: HubInvocation, output: ResponseSink) -> Self::Future {
-        let handler = self.handler.clone();
-        handler.call(request, output, self.stream)
-    }
+    Ok(())
 }

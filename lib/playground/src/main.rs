@@ -50,7 +50,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hub_builder = HubBuilder::new()
         .method("add", add)
         .method("add_stream", add_stream)
-        .streaming_method("stream", stream);
+        .streaming_method("stream", stream)
+        .streaming_method("stream2", stream2);
 
     let invoker = Arc::new(hub_builder.build());
 
@@ -167,4 +168,13 @@ pub async fn add_stream(mut input: StreamArgs<i32>) -> impl HubResponse {
     }
 
     result.into_iter().sum::<i32>()
+}
+
+pub async fn stream2(Args(count): Args<usize>, input: StreamArgs<i32>) -> impl HubResponse {
+    HubStream::infallible(stream! {
+        for i in 0..count {
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            yield i;
+        }
+    })
 }

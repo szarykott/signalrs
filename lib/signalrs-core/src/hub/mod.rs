@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     error::SignalRError,
-    handler::Callable,
+    handler::callable::Callable,
     protocol::*,
     request::{HubInvocation, StreamItemPayload},
     response::ResponseSink,
