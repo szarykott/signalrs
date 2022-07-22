@@ -2,16 +2,6 @@ use futures::stream::Stream;
 use pin_project::pin_project;
 use std::task::Poll;
 
-pub trait BoxExt {
-    fn into_box(self) -> Box<Self>;
-}
-
-impl<T> BoxExt for T {
-    fn into_box(self) -> Box<Self> {
-        Box::new(self)
-    }
-}
-
 pub trait StreamExtR: Stream {
     fn take_while_inclusive<F>(self, f: F) -> TakeWhileInclusive<Self, F>
     where

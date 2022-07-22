@@ -1,9 +1,12 @@
+pub mod builder;
+pub mod client_sink;
+pub mod client_stream_map;
+pub mod inflight_invocations;
+
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
-use flume::r#async::SendSink;
 use futures::{Future, SinkExt};
 use serde_json::Value;
-use tokio::sync::Mutex;
 
 use crate::{
     error::SignalRError,
@@ -13,7 +16,7 @@ use crate::{
     response::ResponseSink,
 };
 
-pub mod builder;
+use self::{client_stream_map::ClientStreamMap, inflight_invocations::InflightInvocations};
 
 const WEIRD_ENDING: &str = "\u{001E}";
 
@@ -27,13 +30,8 @@ pub struct Hub {
                 + Sync,
         >,
     >,
-    inflight_invocations: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
-    client_streams_mapping: Arc<Mutex<HashMap<String, ClientSink>>>,
-}
-
-#[allow(missing_debug_implementations)]
-pub struct ClientSink {
-    pub sink: SendSink<'static, StreamItemPayload>,
+    inflight_invocations: InflightInvocations,
+    client_streams_mapping: ClientStreamMap,
 }
 
 impl Hub {
@@ -76,8 +74,8 @@ impl Hub {
                 if let Some(callable) = self.methods.get(&target.unwrap_or_default()) {
                     let request = HubInvocation::text(
                         text,
-                        Arc::clone(&self.inflight_invocations),
-                        Arc::clone(&self.client_streams_mapping),
+                        self.inflight_invocations.clone(),
+                        self.client_streams_mapping.clone(),
                     );
 
                     callable.call(request, output).await?;
@@ -86,11 +84,9 @@ impl Hub {
             MessageType::CancelInvocation => {
                 let message: CancelInvocation = serde_json::from_str(&text)?;
 
-                let mut guard = self.inflight_invocations.lock().await;
-                match (*guard).remove(&message.invocation_id) {
-                    Some(handle) => handle.abort(),
-                    None => { /* all good */ }
-                };
+                self.inflight_invocations
+                    .cancel(&message.invocation_id)
+                    .await;
             }
             MessageType::StreamItem => {
                 let message: StreamItem<Value> = serde_json::from_str(&text)?;
@@ -99,8 +95,7 @@ impl Hub {
                 let cs = (*guard).get_mut(&message.invocation_id); // invocation id == stream id from invocation
 
                 if let Some(cs) = cs {
-                    dbg!(message.item.clone());
-                    cs.sink.send(StreamItemPayload::Text(message.item)).await?;
+                    cs.send(StreamItemPayload::Text(message.item)).await?;
                 }
             }
             MessageType::Completion => {

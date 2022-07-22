@@ -1,28 +1,36 @@
 use thiserror::Error;
 
-use crate::{request::StreamItemPayload, response::HubResponseStruct, extract::ExtractionError};
+use crate::{extract::ExtractionError, request::StreamItemPayload, response::HubResponseStruct};
 
 #[derive(Error, Debug)]
 pub enum SignalRError {
-    #[error("JSON deserialization error")]
+    #[error("Json error")]
     JsonError {
         #[from]
-        source: serde_json::Error
+        source: serde_json::Error,
     },
-    #[error("Channel error")]
-    ChannelError {
-        #[from] 
-        source: flume::SendError<HubResponseStruct>
+    #[error("Internal communication error")]
+    InternalCommuncationError {
+        #[from]
+        source: InternalCommuncationError,
     },
-    #[error("Channel error")]
-    ChannelError2{
-        #[from] 
-        source: flume::SendError<StreamItemPayload>},
     #[error("An error occured during arguments extraction")]
     ExtrationError {
         #[from]
-        source: ExtractionError
+        source: ExtractionError,
     },
-    #[error("Unspecified error")]
-    UnnspecifiedError,
+}
+
+#[derive(Error, Debug)]
+pub enum InternalCommuncationError {
+    #[error("An error occured while forwarding hub response")]
+    HubResponse {
+        #[from]
+        source: flume::SendError<HubResponseStruct>,
+    },
+    #[error("An error occured while handling stream item")]
+    StreamItem {
+        #[from]
+        source: flume::SendError<StreamItemPayload>,
+    },
 }

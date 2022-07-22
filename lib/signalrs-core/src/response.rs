@@ -1,6 +1,10 @@
 use std::fmt::Debug;
 
-use crate::{error::SignalRError, extensions::StreamExtR, protocol::*};
+use crate::{
+    error::{InternalCommuncationError, SignalRError},
+    extensions::StreamExtR,
+    protocol::*,
+};
 use async_trait;
 use flume::r#async::SendSink;
 use futures::{
@@ -44,7 +48,7 @@ impl ResponseSink {
 }
 
 impl Sink<String> for ResponseSink {
-    type Error = SignalRError;
+    type Error = InternalCommuncationError;
 
     fn poll_ready(
         mut self: std::pin::Pin<&mut Self>,
@@ -103,8 +107,8 @@ macro_rules! impl_hub_response {
             ) -> Result<(), SignalRError>
             {
                 let completion = Completion::new(invocation_id, Some(self), None);
-                sink.send(serde_json::to_string(&completion)? + WEIRD_ENDING)
-                    .await
+                let serialized = serde_json::to_string(&completion)? + WEIRD_ENDING;
+                sink.send(serialized).await.map_err(|e| e.into())
             }
         }
     )*
@@ -129,12 +133,13 @@ where
     ) -> Result<(), SignalRError> {
         let completion = Completion::new(invocation_id, Some(self), None);
         let text = serde_json::to_string(&completion)? + WEIRD_ENDING;
-        sink.send(text).await
+        sink.send(text).await.map_err(|e| e.into())
     }
 }
 
 #[async_trait::async_trait]
-impl<R> HubResponse for Result<R, String> // FIXME: String, rly?
+impl<R> HubResponse for Result<R, String>
+// FIXME: String, rly?
 where
     R: HubResponse + Send + Serialize,
 {
@@ -150,7 +155,7 @@ where
 
         let text = serde_json::to_string(&completion)? + WEIRD_ENDING;
 
-        sink.send(text).await
+        sink.send(text).await.map_err(|e| e.into())
     }
 }
 

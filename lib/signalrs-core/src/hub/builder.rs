@@ -1,7 +1,6 @@
 use super::Hub;
 use crate::{
     error::SignalRError,
-    extract::FromInvocation,
     handler::{
         callable::{Callable, IntoCallable},
         Handler,

@@ -1,6 +1,6 @@
 pub mod callable;
 
-use std::{pin::Pin, sync::Arc};
+use std::pin::Pin;
 
 use futures::Future;
 
@@ -140,20 +140,18 @@ async fn forward_cancellable<Ret: HubResponse + Send + 'static>(
     request: &HubInvocation,
     output: ResponseSink,
 ) -> Result<(), SignalRError> {
-    let id: Id = serde_json::from_str(&request.unwrap_text())?;
+    let Id { invocation_id } = serde_json::from_str(&request.unwrap_text())?;
 
-    let inflight_map_arc = Arc::clone(&request.hub_state.inflight_invocations);
+    let inflight_map = request.hub_state.inflight_invocations.clone();
+    let inflight_map_clone = inflight_map.clone();
+    let id_clone = invocation_id.clone();
 
-    let mut inflight_map = request.hub_state.inflight_invocations.lock().await;
-
-    let id_clone = id.invocation_id.clone();
-    let inflight = tokio::spawn(async move {
-        let _ = result.forward(id_clone.clone(), output).await; // TODO: How to forward error?
-        let mut inflight_map = inflight_map_arc.lock().await;
-        (*inflight_map).remove(&id_clone);
-    });
-
-    (*inflight_map).insert(id.invocation_id, inflight);
+    inflight_map
+        .insert(invocation_id, async move {
+            let _ = result.forward(id_clone.clone(), output).await; // TODO: How to forward error?
+            inflight_map_clone.remove(&id_clone).await;
+        })
+        .await;
 
     Ok(())
 }

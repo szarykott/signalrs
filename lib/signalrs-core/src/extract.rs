@@ -7,7 +7,7 @@ use serde::{de::DeserializeOwned, Deserialize};
 
 use crate::{
     error::SignalRError,
-    hub::ClientSink,
+    hub::client_sink::ClientSink,
     protocol::{Arguments, ClientStreams},
     request::{HubInvocation, Payload, StreamItemPayload},
 };
@@ -30,11 +30,11 @@ pub enum ExtractionError {
     NotEnoughStreamIds,
     #[error("JSON deserialization error")]
     JsonError {
-        #[from] 
-        source: serde_json::Error
+        #[from]
+        source: serde_json::Error,
     },
     #[error("An error occured : {0}")]
-    Other(String)
+    Other(String),
 }
 
 // ============= Args
@@ -132,19 +132,19 @@ where
                         let (tx, rx) = flume::bounded::<StreamItemPayload>(100);
                         let (tx, rx) = (tx.into_sink(), rx.into_stream());
 
+                        let client_sink = ClientSink { sink: tx };
                         let client_stream: ClientStream<T> = ClientStream {
                             stream: rx.map(|i| i.try_deserialize::<T>()),
                         };
-                        let client_sink = ClientSink { sink: tx };
 
                         // TODO: Race condtion here between here and hub StreamItem arriving, possible loss of messages
-                        let mappings = Arc::clone(&request.hub_state.client_streams_mapping);
-                        let fut = async move {
-                            let mut mappings = mappings.lock().await;
-                            (*mappings).insert(stream_id, client_sink);
-                        };
-
-                        tokio::spawn(fut);
+                        tokio::spawn(
+                            request
+                                .hub_state
+                                .client_streams_mapping
+                                .clone()
+                                .insert(stream_id, client_sink),
+                        );
 
                         request.pipeline_state.next_stream_id_index += 1;
 

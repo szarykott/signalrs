@@ -15,15 +15,15 @@ pub trait Callable {
 #[derive(Debug)]
 pub struct IntoCallable<H, T> {
     handler: H,
-    stream: bool,
+    cancellable: bool,
     _marker: PhantomData<T>,
 }
 
 impl<H, T> IntoCallable<H, T> {
-    pub fn new(handler: H, stream: bool) -> Self {
+    pub fn new(handler: H, cancellable: bool) -> Self {
         IntoCallable {
             handler,
-            stream,
+            cancellable,
             _marker: Default::default(),
         }
     }
@@ -37,6 +37,6 @@ where
 
     fn call(&self, request: HubInvocation, output: ResponseSink) -> Self::Future {
         let handler = self.handler.clone();
-        handler.call(request, output, self.stream)
+        handler.call(request, output, self.cancellable)
     }
 }

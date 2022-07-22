@@ -1,10 +1,10 @@
-use std::{collections::HashMap, sync::Arc};
-
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use tokio::sync::Mutex;
 
-use crate::{error::SignalRError, hub::ClientSink};
+use crate::{
+    error::SignalRError,
+    hub::{client_stream_map::ClientStreamMap, inflight_invocations::InflightInvocations},
+};
 
 pub struct HubInvocation {
     pub payload: Payload,
@@ -13,10 +13,10 @@ pub struct HubInvocation {
 }
 
 impl HubInvocation {
-    pub fn text(
+    pub(crate) fn text(
         payload: String,
-        inflight_invocations: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
-        client_streams_mapping: Arc<Mutex<HashMap<String, ClientSink>>>,
+        inflight_invocations: InflightInvocations,
+        client_streams_mapping: ClientStreamMap,
     ) -> Self {
         HubInvocation {
             payload: Payload::Text(payload),
@@ -54,8 +54,8 @@ impl StreamItemPayload {
 }
 
 pub struct HubState {
-    pub inflight_invocations: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
-    pub client_streams_mapping: Arc<Mutex<HashMap<String, ClientSink>>>,
+    pub(crate) inflight_invocations: InflightInvocations,
+    pub client_streams_mapping: ClientStreamMap,
 }
 
 #[derive(Default)]
