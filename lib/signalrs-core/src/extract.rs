@@ -1,4 +1,4 @@
-use std::{sync::Arc, task::Poll};
+use std::task::Poll;
 use thiserror::Error;
 
 use flume::r#async::RecvStream;
@@ -6,10 +6,11 @@ use futures::{stream::Map, Stream, StreamExt};
 use serde::{de::DeserializeOwned, Deserialize};
 
 use crate::{
+    connection::StreamItemPayload,
     error::SignalRError,
     hub::client_sink::ClientSink,
+    invocation::{HubInvocation, Payload},
     protocol::{Arguments, ClientStreams},
-    request::{HubInvocation, Payload, StreamItemPayload},
 };
 
 pub trait FromInvocation
@@ -78,13 +79,27 @@ where
 
 // ============= ClientStream
 
-pub struct StreamArgs<T: 'static>(pub ClientStream<T>);
+pub struct UploadStream<T: 'static>(ClientStream<T>);
 
-pub struct ClientStream<T: 'static> {
+pub(crate) struct ClientStream<T: 'static> {
     stream: Map<
         RecvStream<'static, StreamItemPayload>,
         fn(StreamItemPayload) -> Result<T, SignalRError>,
     >,
+}
+
+impl<T> Stream for UploadStream<T>
+where
+    T: 'static,
+{
+    type Item = T;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        self.0.poll_next_unpin(cx)
+    }
 }
 
 impl<T> Stream for ClientStream<T>
@@ -111,7 +126,7 @@ where
     }
 }
 
-impl<T> FromInvocation for StreamArgs<T>
+impl<T> FromInvocation for UploadStream<T>
 where
     T: DeserializeOwned,
 {
@@ -122,7 +137,7 @@ where
 
                 match client_streams.stream_ids {
                     Some(stream_ids) => {
-                        let index = request.pipeline_state.next_stream_id_index;
+                        let index = request.invocation_state.next_stream_id_index;
 
                         let stream_id = match stream_ids.get(index) {
                             Some(stream_id) => stream_id.clone(),
@@ -137,18 +152,14 @@ where
                             stream: rx.map(|i| i.try_deserialize::<T>()),
                         };
 
-                        // TODO: Race condtion here between here and hub StreamItem arriving, possible loss of messages
-                        tokio::spawn(
-                            request
-                                .hub_state
-                                .client_streams_mapping
-                                .clone()
-                                .insert(stream_id, client_sink),
-                        );
+                        request
+                            .connection_state
+                            .client_streams_mapping
+                            .insert(stream_id, client_sink);
 
-                        request.pipeline_state.next_stream_id_index += 1;
+                        request.invocation_state.next_stream_id_index += 1;
 
-                        return Ok(StreamArgs(client_stream));
+                        return Ok(UploadStream(client_stream));
                     }
                     None => return Err(ExtractionError::MissingStreamIds),
                 }

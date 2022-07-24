@@ -59,8 +59,6 @@ impl HubBuilder {
     pub fn build(self) -> Hub {
         Hub {
             methods: self.methods,
-            inflight_invocations: Default::default(),
-            client_streams_mapping: Default::default(),
         }
     }
 }

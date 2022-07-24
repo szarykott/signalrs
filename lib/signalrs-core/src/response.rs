@@ -4,6 +4,7 @@ use crate::{
     error::{InternalCommuncationError, SignalRError},
     extensions::StreamExtR,
     protocol::*,
+    serialization,
 };
 use async_trait;
 use flume::r#async::SendSink;
@@ -14,8 +15,6 @@ use futures::{
 };
 use pin_project::pin_project;
 use serde::Serialize;
-
-const WEIRD_ENDING: &str = "\u{001E}";
 
 #[non_exhaustive]
 #[derive(Debug, Clone)]
@@ -107,7 +106,7 @@ macro_rules! impl_hub_response {
             ) -> Result<(), SignalRError>
             {
                 let completion = Completion::new(invocation_id, Some(self), None);
-                let serialized = serde_json::to_string(&completion)? + WEIRD_ENDING;
+                let serialized = serialization::to_json(&completion)?;
                 sink.send(serialized).await.map_err(|e| e.into())
             }
         }
@@ -132,7 +131,7 @@ where
         mut sink: ResponseSink,
     ) -> Result<(), SignalRError> {
         let completion = Completion::new(invocation_id, Some(self), None);
-        let text = serde_json::to_string(&completion)? + WEIRD_ENDING;
+        let text = serialization::to_json(&completion)?;
         sink.send(text).await.map_err(|e| e.into())
     }
 }
@@ -153,7 +152,7 @@ where
             Err(err) => Completion::new(invocation_id, None, Some(err)),
         };
 
-        let text = serde_json::to_string(&completion)? + WEIRD_ENDING;
+        let text = serialization::to_json(&completion)?;
 
         sink.send(text).await.map_err(|e| e.into())
     }
@@ -205,10 +204,10 @@ where
         let responses = result
             .zip(futures::stream::repeat(invocation_id.clone()))
             .map(|(e, id)| StreamItem::new(id, e))
-            .map(|si| serde_json::to_string(&si).unwrap() + WEIRD_ENDING)
+            .map(|si| serialization::to_json(&si).unwrap())
             .chain(futures::stream::once(async {
                 let completion: Completion<usize> = Completion::new(invocation_id, None, None);
-                serde_json::to_string(&completion).unwrap() + WEIRD_ENDING
+                serialization::to_json(&completion).unwrap()
             }));
 
         let mut responses = Box::pin(responses);
@@ -249,8 +248,8 @@ where
                 }),
             )
             .map(|e| match e {
-                Ok(si) => serde_json::to_string(&si).unwrap() + WEIRD_ENDING,
-                Err(cmp) => serde_json::to_string(&cmp).unwrap() + WEIRD_ENDING,
+                Ok(si) => serialization::to_json(&si).unwrap(),
+                Err(cmp) => serialization::to_json(&cmp).unwrap(),
             });
 
         let mut responses = Box::pin(responses);

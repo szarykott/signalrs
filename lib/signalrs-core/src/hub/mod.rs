@@ -1,7 +1,5 @@
 pub mod builder;
 pub mod client_sink;
-pub mod client_stream_map;
-pub mod inflight_invocations;
 
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
@@ -9,16 +7,14 @@ use futures::{Future, SinkExt};
 use serde_json::Value;
 
 use crate::{
+    connection::{ConnectionState, StreamItemPayload},
     error::SignalRError,
     handler::callable::Callable,
+    invocation::HubInvocation,
     protocol::*,
-    request::{HubInvocation, StreamItemPayload},
     response::ResponseSink,
+    serialization,
 };
-
-use self::{client_stream_map::ClientStreamMap, inflight_invocations::InflightInvocations};
-
-const WEIRD_ENDING: &str = "\u{001E}";
 
 #[allow(missing_debug_implementations)]
 pub struct Hub {
@@ -30,13 +26,11 @@ pub struct Hub {
                 + Sync,
         >,
     >,
-    inflight_invocations: InflightInvocations,
-    client_streams_mapping: ClientStreamMap,
 }
 
 impl Hub {
     pub fn handshake(&self, input: &str) -> String {
-        let input = input.trim_end_matches(WEIRD_ENDING);
+        let input = serialization::strip_record_separator(input);
 
         let request = serde_json::from_str::<HandshakeRequest>(input);
 
@@ -51,8 +45,8 @@ impl Hub {
             Err(e) => HandshakeResponse::error(e),
         };
 
-        match serde_json::to_string(&response) {
-            Ok(value) => format!("{}{}", value, WEIRD_ENDING),
+        match serialization::to_json(&response) {
+            Ok(value) => value,
             Err(e) => e.to_string(),
         }
     }
@@ -60,9 +54,10 @@ impl Hub {
     pub async fn invoke_text(
         &self,
         text: String,
+        connection_state: ConnectionState,
         mut output: ResponseSink,
     ) -> Result<(), SignalRError> {
-        let text = text.trim_end_matches(WEIRD_ENDING).to_owned();
+        let text = serialization::strip_record_separator(&text).to_owned();
 
         // TODO: implement mechanism to only enable one request from client / connection
         // to be processed at the time
@@ -76,11 +71,7 @@ impl Hub {
         match message_type {
             MessageType::Invocation | MessageType::StreamInvocation => {
                 if let Some(callable) = self.methods.get(&target.unwrap_or_default()) {
-                    let request = HubInvocation::text(
-                        text,
-                        self.inflight_invocations.clone(),
-                        self.client_streams_mapping.clone(),
-                    );
+                    let request = HubInvocation::text(text, connection_state.clone());
 
                     callable.call(request, output).await?;
                 }
@@ -88,34 +79,31 @@ impl Hub {
             MessageType::CancelInvocation => {
                 let message: CancelInvocation = serde_json::from_str(&text)?;
 
-                self.inflight_invocations
-                    .cancel(&message.invocation_id)
-                    .await;
+                connection_state
+                    .inflight_invocations
+                    .cancel(&message.invocation_id);
             }
             MessageType::StreamItem => {
                 let message: StreamItem<Value> = serde_json::from_str(&text)?;
 
-                let mut guard = self.client_streams_mapping.lock().await;
-                let cs = (*guard).get_mut(&message.invocation_id); // invocation id == stream id from invocation
+                let cs = connection_state
+                    .client_streams_mapping
+                    .get_sink(&message.invocation_id);
 
-                if let Some(cs) = cs {
+                if let Some(mut cs) = cs {
                     cs.send(StreamItemPayload::Text(message.item)).await?;
                 }
             }
             MessageType::Completion => {
                 let message: Id = serde_json::from_str(&text)?;
 
-                let mut guard = self.client_streams_mapping.lock().await;
-                let cs = (*guard).remove(&message.invocation_id);
-
-                if let Some(cs) = cs {
-                    drop(cs); // should terminate sender
-                }
+                connection_state
+                    .client_streams_mapping
+                    .remove(&message.invocation_id);
             }
             MessageType::Ping => {
                 let ping = Ping::new();
-                let s = serde_json::to_string(&ping)?;
-                output.send(s + WEIRD_ENDING).await?;
+                output.send(serialization::to_json(&ping)?).await?;
             }
             MessageType::Close => todo!(),
             MessageType::Other => {

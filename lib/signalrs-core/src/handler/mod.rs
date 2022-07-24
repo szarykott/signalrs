@@ -7,8 +7,8 @@ use futures::Future;
 use crate::{
     error::SignalRError,
     extract::FromInvocation,
+    invocation::HubInvocation,
     protocol::{Id, OptionalId},
-    request::HubInvocation,
     response::{HubResponse, ResponseSink},
 };
 
@@ -28,13 +28,11 @@ where
 
     fn call(self, request: HubInvocation, output: ResponseSink, cancellable: bool) -> Self::Future {
         Box::pin(async move {
-            if cancellable {
-                let result = (self)().await;
+            let result = (self)().await;
 
+            if cancellable {
                 forward_cancellable(result, &request, output).await
             } else {
-                let result = (self)().await;
-
                 forward_non_cancellable(result, &request, output).await
             }
         })
@@ -142,16 +140,14 @@ async fn forward_cancellable<Ret: HubResponse + Send + 'static>(
 ) -> Result<(), SignalRError> {
     let Id { invocation_id } = serde_json::from_str(&request.unwrap_text())?;
 
-    let inflight_map = request.hub_state.inflight_invocations.clone();
+    let inflight_map = request.connection_state.inflight_invocations.clone();
     let inflight_map_clone = inflight_map.clone();
     let id_clone = invocation_id.clone();
 
-    inflight_map
-        .insert(invocation_id, async move {
-            let _ = result.forward(id_clone.clone(), output).await; // TODO: How to forward error?
-            inflight_map_clone.remove(&id_clone).await;
-        })
-        .await;
+    inflight_map.insert(invocation_id, async move {
+        let _ = result.forward(id_clone.clone(), output).await; // TODO: How to forward error?
+        inflight_map_clone.remove(&id_clone);
+    });
 
     Ok(())
 }

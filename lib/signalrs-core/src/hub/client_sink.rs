@@ -1,9 +1,9 @@
 use flume::r#async::SendSink;
 use futures::{Sink, SinkExt};
 
-use crate::{error::InternalCommuncationError, request::StreamItemPayload};
+use crate::{connection::StreamItemPayload, error::InternalCommuncationError};
 
-#[allow(missing_debug_implementations)]
+#[derive(Clone)]
 pub struct ClientSink {
     pub(crate) sink: SendSink<'static, StreamItemPayload>,
 }

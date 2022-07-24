@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::{extract::ExtractionError, request::StreamItemPayload, response::HubResponseStruct};
+use crate::{connection::StreamItemPayload, extract::ExtractionError, response::HubResponseStruct};
 
 #[derive(Error, Debug)]
 pub enum SignalRError {
@@ -28,7 +28,7 @@ pub enum InternalCommuncationError {
         #[from]
         source: flume::SendError<HubResponseStruct>,
     },
-    #[error("An error occured while handling stream item")]
+    #[error("An error occured while handling upload stream item")]
     StreamItem {
         #[from]
         source: flume::SendError<StreamItemPayload>,

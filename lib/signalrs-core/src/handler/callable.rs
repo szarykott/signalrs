@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use futures::Future;
 
-use crate::{error::SignalRError, request::HubInvocation, response::ResponseSink};
+use crate::{error::SignalRError, invocation::HubInvocation, response::ResponseSink};
 
 use super::Handler;
 

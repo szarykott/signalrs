@@ -12,7 +12,8 @@ use axum::{
 };
 use futures::{select, sink::SinkExt, stream::StreamExt, FutureExt};
 use signalrs_core::{
-    extract::{Args, StreamArgs},
+    connection::ConnectionState,
+    extract::{Args, UploadStream},
     hub::{builder::HubBuilder, Hub},
     negotiate::{NegotiateResponseV0, TransportSpec},
     response::{HubResponse, HubResponseStruct, HubStream, ResponseSink},
@@ -105,6 +106,8 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<Hub>) {
     let tx_channel = ResponseSink::new(tx_channel.into_sink());
     let mut rx_channel = irx.into_stream(); // TODO: verify memory leak bug fixed!
 
+    let connection_state: ConnectionState = Default::default();
+
     loop {
         select! {
             si = rx_channel.next() => match si {
@@ -122,8 +125,9 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<Hub>) {
                         Message::Text(f) => {
                             let invoker = Arc::clone(&invoker);
                             let itx = tx_channel.clone();
+                            let csc = connection_state.clone();
                             tokio::spawn(async move {
-                                if let Err(_e) = invoker.invoke_text(f, itx).await {
+                                if let Err(_e) = invoker.invoke_text(f, csc, itx).await {
                                     // TODO: log e?
                                 };
                             });
@@ -161,16 +165,16 @@ pub async fn stream(Args(count): Args<usize>) -> impl HubResponse {
     })
 }
 
-pub async fn add_stream(mut input: StreamArgs<i32>) -> impl HubResponse {
+pub async fn add_stream(mut input: UploadStream<i32>) -> impl HubResponse {
     let mut result = Vec::new();
-    while let Some(i) = input.0.next().await {
+    while let Some(i) = input.next().await {
         result.push(i);
     }
 
     result.into_iter().sum::<i32>()
 }
 
-pub async fn stream2(Args(count): Args<usize>, input: StreamArgs<i32>) -> impl HubResponse {
+pub async fn stream2(Args(count): Args<usize>, _input: UploadStream<i32>) -> impl HubResponse {
     HubStream::infallible(stream! {
         for i in 0..count {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
