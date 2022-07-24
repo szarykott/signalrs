@@ -11,7 +11,7 @@ pub mod upload_sinks;
 #[derive(Default, Clone)] // TODO: Is clone really needed?!
 pub struct ConnectionState {
     pub(crate) inflight_invocations: InflightInvocations,
-    pub(crate) client_streams_mapping: UploadSinks,
+    pub(crate) upload_sinks: UploadSinks,
 }
 
 pub enum StreamItemPayload {

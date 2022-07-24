@@ -9,6 +9,7 @@ version = "0.1.0"
 async-trait = "0.1"
 flume = "0.10.13"
 futures = "0.3"
+log = "0.4.17"
 pin-project = "1"
 rmp-serde = "1.1"
 serde = {version = "1.0", features = ["derive"]}

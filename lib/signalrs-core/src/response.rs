@@ -137,10 +137,10 @@ where
 }
 
 #[async_trait::async_trait]
-impl<R> HubResponse for Result<R, String>
-// FIXME: String, rly?
+impl<R, E> HubResponse for Result<R, E>
 where
     R: HubResponse + Send + Serialize,
+    E: ToString + Send,
 {
     async fn forward(
         self,
@@ -149,7 +149,7 @@ where
     ) -> Result<(), SignalRError> {
         let completion = match self {
             Ok(ok) => Completion::new(invocation_id, Some(ok), None),
-            Err(err) => Completion::new(invocation_id, None, Some(err)),
+            Err(err) => Completion::new(invocation_id, None, Some(err.to_string())),
         };
 
         let text = serialization::to_json(&completion)?;

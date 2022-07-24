@@ -12,6 +12,8 @@ use crate::{
     response::{HubResponse, ResponseSink},
 };
 
+use log::*;
+
 pub trait Handler<T> {
     type Future: Future<Output = Result<(), SignalRError>> + Send;
 
@@ -145,7 +147,12 @@ async fn forward_cancellable<Ret: HubResponse + Send + 'static>(
     let id_clone = invocation_id.clone();
 
     inflight_map.insert(invocation_id, async move {
-        let _ = result.forward(id_clone.clone(), output).await; // TODO: How to forward error?
+        let result = result.forward(id_clone.clone(), output).await; // TODO: How to forward error?
+
+        if let Err(e) = result {
+            error!("error streaming hub method result: {}", e);
+        }
+
         inflight_map_clone.remove(&id_clone);
     });
 

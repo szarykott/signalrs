@@ -11,13 +11,15 @@ use axum::{
     Router,
 };
 use futures::{select, sink::SinkExt, stream::StreamExt, FutureExt};
+use log::*;
 use signalrs_core::{
     connection::ConnectionState,
     extract::{Args, UploadStream},
     hub::{builder::HubBuilder, Hub},
     negotiate::{NegotiateResponseV0, TransportSpec},
-    response::{HubResponse, HubResponseStruct, HubStream, ResponseSink},
+    response::{HubResponse, HubStream, ResponseSink},
 };
+use simple_logger::SimpleLogger;
 use std::sync::Arc;
 use tower_http::{
     cors::{AllowOrigin, CorsLayer},
@@ -27,7 +29,19 @@ use tower_http::{
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init();
+
+    SimpleLogger::new()
+        .with_colors(true)
+        .with_local_timestamps()
+        .with_module_level("mio", LevelFilter::Warn)
+        .with_module_level("tokio_tungstenite", LevelFilter::Warn)
+        .with_module_level("tungstenite", LevelFilter::Warn)
+        .with_module_level("hyper", LevelFilter::Warn)
+        .with_module_level("tracing", LevelFilter::Warn)
+        .with_module_level("tower_http", LevelFilter::Warn)
+        .init()
+        .unwrap();
 
     let cors = CorsLayer::new()
         .allow_headers(vec![
@@ -73,6 +87,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn negotiate() -> Json<NegotiateResponseV0> {
+    debug!("negotiate endpoint invoked");
+
     Json(NegotiateResponseV0 {
         connection_id: "test".into(),
         negotiate_version: 0,
@@ -87,6 +103,8 @@ async fn ws_upgrade_handler(
     ws: WebSocketUpgrade,
     Extension(invoker): Extension<Arc<Hub>>,
 ) -> impl IntoResponse {
+    debug!("websocket upgrade request recieved");
+
     let f = |ws| ws_handler(ws, invoker);
     ws.on_upgrade(f)
 }
@@ -94,10 +112,14 @@ async fn ws_upgrade_handler(
 async fn ws_handler(socket: WebSocket, invoker: Arc<Hub>) {
     let (mut tx_socket, mut rx_socket) = socket.split();
 
+    debug!("performing handshake for a new hub client");
+
     if let Some(Ok(Message::Text(msg))) = rx_socket.next().await {
         let response = invoker.handshake(msg.as_str());
         tx_socket.send(Message::Text(response)).await.unwrap();
     } else {
+        //TODO: Proper error logging
+        debug!("failed handshake attempt");
         return;
     }
 
@@ -108,27 +130,32 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<Hub>) {
 
     let connection_state: ConnectionState = Default::default();
 
+    debug!("starting event loop for a new client");
+
     loop {
         select! {
             si = rx_channel.next() => match si {
                 Some(msg) => {
-                    let msg : HubResponseStruct = msg;
-                    dbg!(msg.clone());
-                    tx_socket.send(Message::Text(msg.unwrap_text())).await.unwrap();
+                    let text = msg.unwrap_text();
+                    debug!("sending to client: {}", text);
+                    tx_socket.send(Message::Text(text)).await.unwrap();
                 },
-                None => { /* panik */ },
+                None => {
+                    debug!("rx_channel ended")
+                    /* panik or kalm */
+                },
             },
             nm = rx_socket.next().fuse() => match nm {
                 Some(Ok(msg)) => {
-                    dbg!(msg.clone());
+                    debug!("received from client: {:?}", msg);
                     match msg {
                         Message::Text(f) => {
                             let invoker = Arc::clone(&invoker);
                             let itx = tx_channel.clone();
                             let csc = connection_state.clone();
                             tokio::spawn(async move {
-                                if let Err(_e) = invoker.invoke_text(f, csc, itx).await {
-                                    // TODO: log e?
+                                if let Err(e) = invoker.invoke_text(f, csc, itx).await {
+                                    error!("error on invoke_text: {}", e);
                                 };
                             });
                         }
@@ -141,15 +168,16 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<Hub>) {
                     };
                 }
                 Some(Err(e)) => {
-                    dbg!(e);
+                    debug!("error while receiving from client: {}", e);
                 }
                 None => {
-                    dbg!("None");
                     break;
                 }
             }
         }
     }
+
+    debug!("client event loop stopped");
 }
 
 async fn add(Args((a, b)): Args<(i32, i32)>) -> i32 {

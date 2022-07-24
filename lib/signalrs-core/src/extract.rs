@@ -6,9 +6,8 @@ use futures::{stream::Map, Stream, StreamExt};
 use serde::{de::DeserializeOwned, Deserialize};
 
 use crate::{
-    connection::StreamItemPayload,
+    connection::{upload_sinks::ClientSink, StreamItemPayload},
     error::SignalRError,
-    hub::client_sink::ClientSink,
     invocation::{HubInvocation, Payload},
     protocol::{Arguments, ClientStreams},
 };
@@ -154,7 +153,7 @@ where
 
                         request
                             .connection_state
-                            .client_streams_mapping
+                            .upload_sinks
                             .insert(stream_id, client_sink);
 
                         request.invocation_state.next_stream_id_index += 1;

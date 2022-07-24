@@ -9,7 +9,6 @@ use crate::{
 use futures::Future;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
-#[allow(missing_debug_implementations)]
 pub struct HubBuilder {
     methods: HashMap<
         String,
