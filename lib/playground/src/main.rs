@@ -116,7 +116,7 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<Hub>) {
 
     if let Some(Ok(Message::Text(msg))) = rx_socket.next().await {
         let response = invoker.handshake(msg.as_str());
-        tx_socket.send(Message::Text(response)).await.unwrap();
+        tx_socket.send(Message::Text(response)).await.unwrap(); // TODO: no unwrap!
     } else {
         //TODO: Proper error logging
         debug!("failed handshake attempt");

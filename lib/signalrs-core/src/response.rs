@@ -32,9 +32,6 @@ impl HubResponseStruct {
     }
 }
 
-// ======== Function abstraction
-
-#[allow(missing_debug_implementations)]
 #[derive(Clone)]
 pub struct ResponseSink {
     inner: SendSink<'static, HubResponseStruct>,

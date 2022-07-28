@@ -86,7 +86,7 @@ impl Hub {
                 });
 
                 if let Some(callable) = self.methods.get(&target) {
-                    let request = HubInvocation::text(text.to_owned(), connection_state.clone());
+                    let request = HubInvocation::text(text.to_owned(), connection_state);
                     callable.call(request, output).await?;
                 } else {
                     error!("method {target} not found")
@@ -102,12 +102,14 @@ impl Hub {
             MessageType::StreamItem => {
                 let message: StreamItem<Value> = serde_json::from_str(text)?;
 
-                let cs = connection_state
+                let upload_sink = connection_state
                     .upload_sinks
                     .get_sink(&message.invocation_id);
 
-                if let Some(mut cs) = cs {
-                    cs.send(message.item).await?;
+                if let Some(mut upload_sink) = upload_sink {
+                    upload_sink.send(message.item).await?;
+                } else {
+                    warn!("received upload stream item without matching invocation")
                 }
             }
             MessageType::Completion => {

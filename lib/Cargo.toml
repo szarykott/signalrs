@@ -2,7 +2,5 @@
 
 members = [
   "signalrs-core",
-  "signalrs-macros",
-  "tests/signalrs-tests",
   "playground",
 ]

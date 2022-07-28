@@ -95,12 +95,24 @@ pub struct Invocation<A> {
 }
 
 impl<A> Invocation<A> {
-    pub fn new(invocation_id: Option<String>, target: String, arguments: Option<A>) -> Self {
+    pub fn without_id(target: impl Into<String>, arguments: Option<A>) -> Self {
+        Self::new(None, target.into(), arguments)
+    }
+
+    pub fn with_id(
+        invocation_id: impl Into<String>,
+        target: impl Into<String>,
+        arguments: Option<A>,
+    ) -> Self {
+        Self::new(Some(invocation_id.into()), target.into(), arguments)
+    }
+
+    fn new(invocation_id: Option<String>, target: String, arguments: Option<A>) -> Self {
         Invocation {
             r#type: MessageType::Invocation,
             headers: None,
             invocation_id,
-            target,
+            target: target.into(),
             arguments,
             stream_ids: None,
         }
@@ -123,12 +135,16 @@ pub struct StreamInvocation<A> {
 }
 
 impl<A> StreamInvocation<A> {
-    pub fn new(invocation_id: String, target: String, arguments: Option<A>) -> Self {
+    pub fn new(
+        invocation_id: impl Into<String>,
+        target: impl Into<String>,
+        arguments: Option<A>,
+    ) -> Self {
         StreamInvocation {
             r#type: MessageType::StreamInvocation,
             headers: None,
-            invocation_id,
-            target,
+            invocation_id: invocation_id.into(),
+            target: target.into(),
             arguments,
             stream_ids: None,
         }
@@ -147,11 +163,11 @@ pub struct StreamItem<I> {
 }
 
 impl<I> StreamItem<I> {
-    pub fn new(id: String, item: I) -> Self {
+    pub fn new(invocation_id: impl Into<String>, item: I) -> Self {
         StreamItem {
             r#type: MessageType::StreamItem,
             headers: None,
-            invocation_id: id,
+            invocation_id: invocation_id.into(),
             item,
         }
     }
@@ -175,11 +191,23 @@ pub struct Completion<R> {
 }
 
 impl<R> Completion<R> {
-    pub fn new(invocation_id: String, result: Option<R>, error: Option<String>) -> Self {
+    pub fn ok(invocation_id: impl Into<String>) -> Self {
+        Self::new(invocation_id, None, None)
+    }
+
+    pub fn with_result(invocation_id: impl Into<String>, result: R) -> Self {
+        Self::new(invocation_id, Some(result), None)
+    }
+
+    pub fn error(invocation_id: impl Into<String>, error: impl Into<String>) -> Self {
+        Self::new(invocation_id, None, Some(error.into()))
+    }
+
+    pub fn new(invocation_id: impl Into<String>, result: Option<R>, error: Option<String>) -> Self {
         Completion {
             r#type: MessageType::Completion,
             headers: None,
-            invocation_id,
+            invocation_id: invocation_id.into(),
             result,
             error,
         }
@@ -197,42 +225,11 @@ pub struct CancelInvocation {
 }
 
 impl CancelInvocation {
-    pub fn new(id: String) -> Self {
+    pub fn new(invocation_id: String) -> Self {
         CancelInvocation {
             r#type: MessageType::CancelInvocation,
             headers: None,
-            invocation_id: id,
-        }
-    }
-}
-
-/// Message format used during SignalR exchange
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub enum MessageFormat {
-    /// A JSON format
-    Json,
-    /// A MessagePack format
-    MessagePack,
-}
-
-impl MessageFormat {
-    pub fn from_bytes<'de, T>(&self, bytes: &'de [u8]) -> T
-    where
-        T: Deserialize<'de>,
-    {
-        match self {
-            MessageFormat::Json => serde_json::from_slice(bytes).unwrap(), // TODO: Fixme
-            MessageFormat::MessagePack => rmp_serde::from_slice(bytes).unwrap(), // TODO: Fixm
-        }
-    }
-
-    pub fn to_bytes<T>(&self, value: &T) -> Vec<u8>
-    where
-        T: Serialize,
-    {
-        match self {
-            MessageFormat::Json => serde_json::to_vec(value).unwrap(), // TODO: Fixm
-            MessageFormat::MessagePack => rmp_serde::to_vec(value).unwrap(), // TODO: Fixm
+            invocation_id,
         }
     }
 }

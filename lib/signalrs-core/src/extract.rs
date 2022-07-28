@@ -22,9 +22,9 @@ where
 
 #[derive(Debug, Error)]
 pub enum ExtractionError {
-    #[error("Arguments not provided the in invocation")]
+    #[error("Arguments not provided in the invocation")]
     MissingArgs,
-    #[error("Stream not provided the in invocation")]
+    #[error("Stream not provided in the invocation")]
     MissingStreamIds,
     #[error("Number of requested client streams exceeds the number of streams in the invocation")]
     NotEnoughStreamIds,
@@ -34,7 +34,7 @@ pub enum ExtractionError {
         source: serde_json::Error,
     },
     #[error("An error occured : {0}")]
-    Other(String),
+    UserDefined(String),
 }
 
 // ============= Args
@@ -52,10 +52,9 @@ where
                 let arguments: Arguments<serde_json::Value> = serde_json::from_str(text.as_str())?;
 
                 let arguments = match arguments.arguments {
-                    Some(serde_json::Value::Array(args)) => {
+                    Some(serde_json::Value::Array(mut args)) => {
                         if args.len() == 1 {
-                            let single = args[0].clone();
-                            serde_json::from_value(single)
+                            serde_json::from_value(args[0].take())
                         } else if args.len() > 1 {
                             serde_json::from_value(serde_json::Value::Array(args))
                         } else {
