@@ -1,6 +1,5 @@
 use futures::{Stream, StreamExt};
-use signalrs_core::{protocol::*, response::*};
-
+use signalrs::{protocol::*, response::*};
 
 pub trait SingleResponse<Ret> {
     fn into_completion() -> Completion<Ret>;

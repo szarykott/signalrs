@@ -8,7 +8,7 @@ use futures::{
 };
 use log::LevelFilter;
 use log::*;
-use signalrs_core::{
+use signalrs::{
     connection::ConnectionState,
     error::SignalRError,
     extract::{Args, UploadStream},
@@ -169,7 +169,7 @@ async fn test_stream_failure() {
     rx.assert_none();
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_add_stream() {
     pub async fn add_stream(mut input: UploadStream<i32>) -> impl HubResponse {
         let mut result = Vec::new();
@@ -231,7 +231,7 @@ async fn test_add_stream() {
     .unwrap();
 
     hub.invoke_text(
-        Completion::<i32>::ok("123").to_json(),
+        Completion::<i32>::ok("1").to_json(),
         state.clone(),
         tx.clone(),
     )

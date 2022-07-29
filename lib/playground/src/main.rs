@@ -12,7 +12,7 @@ use axum::{
 };
 use futures::{select, sink::SinkExt, stream::StreamExt, FutureExt};
 use log::*;
-use signalrs_core::{
+use signalrs::{
     connection::ConnectionState,
     extract::{Args, UploadStream},
     hub::{builder::HubBuilder, Hub},

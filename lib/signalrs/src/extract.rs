@@ -2,7 +2,7 @@ use flume::r#async::RecvStream;
 use futures::{stream::Map, Stream, StreamExt};
 use log::*;
 use serde::{de::DeserializeOwned, Deserialize};
-use std::task::Poll;
+use std::{fmt::Debug, task::Poll};
 use thiserror::Error;
 
 use crate::{
@@ -114,9 +114,9 @@ where
 
         match next {
             Poll::Ready(Some(Ok(i))) => Poll::Ready(Some(i)),
-            Poll::Ready(Some(Err(_e))) => {
-                //TODO: log error!
-                todo!()
+            Poll::Ready(Some(Err(e))) => {
+                error!("error in upload stream : {e}");
+                Poll::Pending // FIXME: Probably I am wrong
             }
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,

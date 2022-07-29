@@ -31,6 +31,9 @@ where
         Box::pin(async move {
             tokio::spawn(async move {
                 let result = (self)().await;
+
+                trace!("hub method call finished");
+
                 if cancellable {
                     forward_cancellable(result, request, output).await
                 } else {
@@ -65,6 +68,8 @@ where
 
             tokio::spawn(async move {
                 let result = (self)(t1).await;
+
+                trace!("hub method call finished");
 
                 if cancellable {
                     forward_cancellable(result, request, output).await
@@ -107,6 +112,8 @@ macro_rules! impl_handler {
 
                     tokio::spawn(async move {
                         let result = (self)($($ty,)+).await;
+
+                        trace!("hub method call finished");
 
                         if cancellable {
                             forward_cancellable(result, request, output).await
