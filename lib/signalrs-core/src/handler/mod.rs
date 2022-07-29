@@ -1,8 +1,7 @@
 pub mod callable;
 
-use std::pin::Pin;
-
 use futures::Future;
+use std::pin::Pin;
 
 use crate::{
     error::SignalRError,
@@ -30,13 +29,16 @@ where
 
     fn call(self, request: HubInvocation, output: ResponseSink, cancellable: bool) -> Self::Future {
         Box::pin(async move {
-            let result = (self)().await;
+            tokio::spawn(async move {
+                let result = (self)().await;
+                if cancellable {
+                    forward_cancellable(result, request, output).await
+                } else {
+                    forward_non_cancellable(result, request, output).await
+                }
+            });
 
-            if cancellable {
-                forward_cancellable(result, &request, output).await
-            } else {
-                forward_non_cancellable(result, &request, output).await
-            }
+            Ok(())
         })
     }
 }
@@ -46,7 +48,7 @@ where
     Fn: FnOnce(T1) -> Fut + Send + 'static,
     Fut: Future<Output = Ret> + Send,
     Ret: HubResponse + Send + 'static,
-    T1: FromInvocation + Send,
+    T1: FromInvocation + Send + 'static,
 {
     type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
 
@@ -59,13 +61,19 @@ where
         Box::pin(async move {
             let t1 = FromInvocation::try_from_request(&mut request)?;
 
-            let result = (self)(t1).await;
+            trace!("extracted all arguments from request");
 
-            if cancellable {
-                forward_cancellable(result, &request, output).await
-            } else {
-                forward_non_cancellable(result, &request, output).await
-            }
+            tokio::spawn(async move {
+                let result = (self)(t1).await;
+
+                if cancellable {
+                    forward_cancellable(result, request, output).await
+                } else {
+                    forward_non_cancellable(result, request, output).await
+                }
+            });
+
+            Ok(())
         })
     }
 }
@@ -79,7 +87,7 @@ macro_rules! impl_handler {
             Fut: Future<Output = Ret> + Send,
             Ret: HubResponse + Send + 'static,
             $(
-                $ty: FromInvocation + Send,
+                $ty: FromInvocation + Send + 'static,
             )+
         {
             type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
@@ -95,13 +103,20 @@ macro_rules! impl_handler {
                         let $ty = FromInvocation::try_from_request(&mut request)?;
                     )+
 
-                    let result = (self)($($ty,)+).await;
+                    trace!("extracted all arguments from request");
 
-                    if cancellable {
-                        forward_cancellable(result, &request, output).await
-                    } else {
-                        forward_non_cancellable(result, &request, output).await
-                    }
+                    tokio::spawn(async move {
+                        let result = (self)($($ty,)+).await;
+
+                        if cancellable {
+                            forward_cancellable(result, request, output).await
+                        } else {
+                            forward_non_cancellable(result, request, output).await
+                        }
+                    });
+
+                    Ok(())
+
                 })
             }
         }
@@ -123,7 +138,7 @@ impl_handler!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
 
 async fn forward_non_cancellable<Ret: HubResponse>(
     result: Ret,
-    request: &HubInvocation,
+    request: HubInvocation,
     output: ResponseSink,
 ) -> Result<(), SignalRError> {
     let invocation: OptionalId = serde_json::from_str(&request.unwrap_text())?;
@@ -137,7 +152,7 @@ async fn forward_non_cancellable<Ret: HubResponse>(
 
 async fn forward_cancellable<Ret: HubResponse + Send + 'static>(
     result: Ret,
-    request: &HubInvocation,
+    request: HubInvocation,
     output: ResponseSink,
 ) -> Result<(), SignalRError> {
     let Id { invocation_id } = serde_json::from_str(&request.unwrap_text())?;

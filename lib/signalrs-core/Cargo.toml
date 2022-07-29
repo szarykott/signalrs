@@ -21,3 +21,4 @@ tokio = {version = "1", features = ["full"]}
 [dev-dependencies]
 rstest = "0.15"
 async-stream = "0.3"
+simple_logger = "2.2.0"

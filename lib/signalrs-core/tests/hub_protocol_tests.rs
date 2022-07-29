@@ -1,16 +1,23 @@
 #![allow(unused_imports)]
+use std::sync::Arc;
+
 use async_stream::stream;
 use futures::{
     sink::Sink,
     stream::{Stream, StreamExt},
 };
+use log::LevelFilter;
+use log::*;
 use signalrs_core::{
+    connection::ConnectionState,
     error::SignalRError,
-    extract::Args,
+    extract::{Args, UploadStream},
     hub::builder::HubBuilder,
+    invocation,
     protocol::*,
     response::{HubResponse, HubStream, ResponseSink},
 };
+use simple_logger::SimpleLogger;
 
 use crate::common::{SerializeExt, StringExt};
 
@@ -33,6 +40,25 @@ async fn test_add() {
         .unwrap();
 
     assert_eq!(Completion::with_result("123", 3), rx.receive_text_into());
+}
+
+#[tokio::test]
+async fn test_non_blocking() {
+    async fn non_blocking(Args((a, b)): Args<(i32, i32)>) {
+        print!("result is {a} + {b} = {0}", a + b)
+    }
+
+    let hub = HubBuilder::new()
+        .method("non_blocking", non_blocking)
+        .build();
+    let (tx, rx) = common::create_channels();
+    let invocation = Invocation::without_id("non_blocking", Some((1i32, 2i32))).to_json();
+
+    hub.invoke_text(invocation, Default::default(), tx)
+        .await
+        .unwrap();
+
+    rx.assert_none();
 }
 
 #[tokio::test]
@@ -141,4 +167,78 @@ async fn test_stream_failure() {
         rx.receive_text_into()
     );
     rx.assert_none();
+}
+
+#[tokio::test]
+async fn test_add_stream() {
+    pub async fn add_stream(mut input: UploadStream<i32>) -> impl HubResponse {
+        let mut result = Vec::new();
+        trace!("add_stream invoked");
+        while let Some(i) = input.next().await {
+            trace!("add_stream next item: {i}");
+            result.push(i);
+        }
+
+        result.into_iter().sum::<i32>()
+    }
+
+    SimpleLogger::new()
+        .with_colors(true)
+        .with_local_timestamps()
+        .with_module_level("mio", LevelFilter::Warn)
+        .with_module_level("tokio_tungstenite", LevelFilter::Warn)
+        .with_module_level("tungstenite", LevelFilter::Warn)
+        .with_module_level("hyper", LevelFilter::Warn)
+        .with_module_level("tracing", LevelFilter::Warn)
+        .with_module_level("tower_http", LevelFilter::Warn)
+        .init()
+        .unwrap();
+
+    let hub = HubBuilder::new().method("add_stream", add_stream).build();
+    let state: ConnectionState = Default::default();
+    let (tx, rx) = common::create_channels();
+
+    let mut invocation = Invocation::<()>::with_id("123", "add_stream", None);
+    invocation.stream_ids = Some(vec!["1".to_string()]);
+    let invocation = invocation.to_json();
+
+    hub.invoke_text(invocation, state.clone(), tx.clone())
+        .await
+        .unwrap();
+
+    hub.invoke_text(
+        StreamItem::new("1", 1i32).to_json(),
+        state.clone(),
+        tx.clone(),
+    )
+    .await
+    .unwrap();
+
+    hub.invoke_text(
+        StreamItem::new("1", 1i32).to_json(),
+        state.clone(),
+        tx.clone(),
+    )
+    .await
+    .unwrap();
+
+    hub.invoke_text(
+        StreamItem::new("1", 1i32).to_json(),
+        state.clone(),
+        tx.clone(),
+    )
+    .await
+    .unwrap();
+
+    hub.invoke_text(
+        Completion::<i32>::ok("123").to_json(),
+        state.clone(),
+        tx.clone(),
+    )
+    .await
+    .unwrap();
+
+    drop(tx);
+
+    assert_eq!(Completion::with_result("123", 3), rx.receive_text_into());
 }
