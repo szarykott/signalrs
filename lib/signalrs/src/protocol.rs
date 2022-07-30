@@ -225,11 +225,11 @@ pub struct CancelInvocation {
 }
 
 impl CancelInvocation {
-    pub fn new(invocation_id: String) -> Self {
+    pub fn new(invocation_id: impl Into<String>) -> Self {
         CancelInvocation {
             r#type: MessageType::CancelInvocation,
             headers: None,
-            invocation_id,
+            invocation_id: invocation_id.into(),
         }
     }
 }

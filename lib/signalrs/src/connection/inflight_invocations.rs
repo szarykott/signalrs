@@ -3,12 +3,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use log::*;
+
 use futures::Future;
-use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct InflightInvocations {
-    value: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
+    value: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }
 
 impl InflightInvocations {
@@ -20,7 +22,9 @@ impl InflightInvocations {
         drop(guard);
 
         match result {
-            Some(handle) => handle.abort(),
+            Some(handle) => {
+                handle.cancel();
+            }
             None => { /* all good */ }
         };
     }
@@ -30,15 +34,19 @@ impl InflightInvocations {
         let _ = (*guard).remove(invocation_id);
     }
 
-    pub fn insert<F>(&self, invocation_id: String, fut: F)
+    pub fn insert<F>(&self, invocation_id: String, fut: F, cancellation_token: CancellationToken)
     where
         F: Future<Output = ()> + Send + 'static,
     {
         let mut guard = self.value.lock().unwrap();
 
-        // future might want to remove itself from map, acquire lock first
-        let handle = tokio::spawn(fut);
+        let this = self.clone();
+        let id = invocation_id.clone();
+        tokio::spawn(async move {
+            fut.await;
+            this.remove(&id);
+        });
 
-        (*guard).insert(invocation_id, handle);
+        (*guard).insert(invocation_id, cancellation_token);
     }
 }

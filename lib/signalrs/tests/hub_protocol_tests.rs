@@ -139,6 +139,38 @@ async fn test_stream() {
 }
 
 #[tokio::test]
+async fn test_stream_cancel() {
+    async fn stream(Args(count): Args<usize>) -> impl HubResponse {
+        HubStream::infallible(stream! {
+            for i in 0..count {
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                trace!("yielding {}", i);
+                yield i;
+            }
+            trace!("stream finishing");
+        })
+    }
+
+    let hub = HubBuilder::new().streaming_method("stream", stream).build();
+    let (tx, rx) = common::create_channels();
+    let state: ConnectionState = Default::default();
+
+    let inv = StreamInvocation::new("123", "stream", Some((3usize,))).to_json();
+
+    hub.invoke_text(inv, state.clone(), tx.clone())
+        .await
+        .unwrap();
+
+    assert_eq!(StreamItem::new("123", 0usize), rx.receive_text_into().await);
+
+    hub.invoke_text(CancelInvocation::new("123").to_json(), state.clone(), tx)
+        .await
+        .unwrap();
+
+    rx.assert_none().await;
+}
+
+#[tokio::test]
 async fn test_stream_failure() {
     async fn stream_failure(Args(count): Args<usize>) -> impl HubResponse {
         HubStream::fallible(stream! {
@@ -184,18 +216,6 @@ async fn test_add_stream() {
 
         result.into_iter().sum::<i32>()
     }
-
-    SimpleLogger::new()
-        .with_colors(true)
-        .with_local_timestamps()
-        .with_module_level("mio", LevelFilter::Warn)
-        .with_module_level("tokio_tungstenite", LevelFilter::Warn)
-        .with_module_level("tungstenite", LevelFilter::Warn)
-        .with_module_level("hyper", LevelFilter::Warn)
-        .with_module_level("tracing", LevelFilter::Warn)
-        .with_module_level("tower_http", LevelFilter::Warn)
-        .init()
-        .unwrap();
 
     let hub = HubBuilder::new().method("add_stream", add_stream).build();
     let state: ConnectionState = Default::default();

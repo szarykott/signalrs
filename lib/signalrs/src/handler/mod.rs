@@ -1,7 +1,8 @@
 pub mod callable;
 
-use futures::Future;
+use futures::{select, Future, FutureExt};
 use std::pin::Pin;
+use tokio_util::sync::CancellationToken;
 
 use crate::{
     error::SignalRError,
@@ -148,9 +149,9 @@ async fn forward_non_cancellable<Ret: HubResponse>(
     request: HubInvocation,
     output: ResponseSink,
 ) -> Result<(), SignalRError> {
-    let invocation: OptionalId = serde_json::from_str(&request.unwrap_text())?;
+    let OptionalId { invocation_id } = serde_json::from_str(&request.unwrap_text())?;
 
-    if let Some(id) = invocation.invocation_id {
+    if let Some(id) = invocation_id {
         result.forward(id, output).await?;
     }
 
@@ -164,19 +165,31 @@ async fn forward_cancellable<Ret: HubResponse + Send + 'static>(
 ) -> Result<(), SignalRError> {
     let Id { invocation_id } = serde_json::from_str(&request.unwrap_text())?;
 
-    let inflight_map = request.connection_state.inflight_invocations.clone();
-    let inflight_map_clone = inflight_map.clone();
-    let id_clone = invocation_id.clone();
+    let cancellation_token = CancellationToken::new();
 
-    inflight_map.insert(invocation_id, async move {
-        let result = result.forward(id_clone.clone(), output).await; // TODO: How to forward error?
+    let invocation_id1 = invocation_id.clone();
+    let forward_future = async move {
+        let result = result.forward(invocation_id1.clone(), output).await; // TODO: How to forward error?
 
         if let Err(e) = result {
             error!("error streaming hub method result: {}", e);
+        } else {
+            trace!("invocation forward succesfull")
         }
+    };
 
-        inflight_map_clone.remove(&id_clone);
-    });
+    let cancellation_token1 = cancellation_token.clone();
+    let fut = async move {
+        select! {
+            _ = forward_future.fuse() => {},
+            _ = cancellation_token1.cancelled().fuse() => {}
+        };
+    };
+
+    request
+        .connection_state
+        .inflight_invocations
+        .insert(invocation_id, fut, cancellation_token);
 
     Ok(())
 }
