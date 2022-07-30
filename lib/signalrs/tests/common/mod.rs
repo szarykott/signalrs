@@ -3,36 +3,49 @@ use std::time::Duration;
 use flume::Receiver;
 use futures::{Stream, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
-use signalrs::response::{HubResponseStruct, ResponseSink};
+use signalrs::{
+    hub::Hub,
+    response::{HubResponseStruct, ResponseSink},
+};
 
 pub struct TestReceiver {
     receiver: Receiver<HubResponseStruct>,
 }
 
 impl TestReceiver {
-    pub fn receive_text(&self) -> String {
-        self.receiver
-            .recv_timeout(Duration::from_secs(3))
-            .unwrap()
+    pub async fn receive_text(&self) -> String {
+        self.receive_timeout()
+            .await
             .unwrap_text()
             .strip_record_separator()
     }
 
-    pub fn receive_text_into<T>(&self) -> T
+    async fn receive_timeout(&self) -> HubResponseStruct {
+        let timeout = tokio::time::timeout(Duration::from_secs(3), self.receiver.recv_async());
+
+        match timeout.await {
+            Ok(value) => value.unwrap(),
+            Err(e) => panic!("receive timedout with error {}", e),
+        }
+    }
+
+    pub async fn receive_text_into<T>(&self) -> T
     where
         T: DeserializeOwned,
     {
-        let text = self.receive_text();
+        let text = self.receive_text().await;
         serde_json::from_str(&text).unwrap()
     }
 
-    pub fn assert_none(&self) {
+    pub async fn assert_none(&self) {
+        tokio::task::yield_now().await;
+
         let result = self.receiver.try_recv();
 
         match result {
-            Ok(_) => panic!("Expected dropped channel"),
+            Ok(_) => panic!("Expected dropped channel, got message"),
             Err(e) => match e {
-                flume::TryRecvError::Empty => panic!("Expected dropped channel"),
+                flume::TryRecvError::Empty => panic!("Expected dropped channel, got empty"),
                 flume::TryRecvError::Disconnected => { /* ok*/ }
             },
         }

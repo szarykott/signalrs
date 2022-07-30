@@ -39,7 +39,10 @@ async fn test_add() {
         .await
         .unwrap();
 
-    assert_eq!(Completion::with_result("123", 3), rx.receive_text_into());
+    assert_eq!(
+        Completion::with_result("123", 3),
+        rx.receive_text_into().await
+    );
 }
 
 #[tokio::test]
@@ -58,7 +61,7 @@ async fn test_non_blocking() {
         .await
         .unwrap();
 
-    rx.assert_none();
+    rx.assert_none().await;
 }
 
 #[tokio::test]
@@ -81,7 +84,7 @@ async fn test_single_result_failure() {
 
     assert_eq!(
         Completion::<i32>::error("123", EXPECTED_MESSAGE),
-        rx.receive_text_into()
+        rx.receive_text_into().await
     );
 }
 
@@ -103,7 +106,7 @@ async fn test_batched() {
 
     assert_eq!(
         Completion::with_result("123", vec![0, 1, 2, 3, 4]),
-        rx.receive_text_into()
+        rx.receive_text_into().await
     );
 }
 
@@ -128,11 +131,11 @@ async fn test_stream() {
         .await
         .unwrap();
 
-    assert_eq!(StreamItem::new("123", 0usize), rx.receive_text_into());
-    assert_eq!(StreamItem::new("123", 1usize), rx.receive_text_into());
-    assert_eq!(StreamItem::new("123", 2usize), rx.receive_text_into());
-    assert_eq!(Completion::<usize>::ok("123"), rx.receive_text_into());
-    rx.assert_none();
+    assert_eq!(StreamItem::new("123", 0usize), rx.receive_text_into().await);
+    assert_eq!(StreamItem::new("123", 1usize), rx.receive_text_into().await);
+    assert_eq!(StreamItem::new("123", 2usize), rx.receive_text_into().await);
+    assert_eq!(Completion::<usize>::ok("123"), rx.receive_text_into().await);
+    rx.assert_none().await;
 }
 
 #[tokio::test]
@@ -159,17 +162,17 @@ async fn test_stream_failure() {
         .await
         .unwrap();
 
-    assert_eq!(StreamItem::new("123", 0usize), rx.receive_text_into());
-    assert_eq!(StreamItem::new("123", 1usize), rx.receive_text_into());
-    assert_eq!(StreamItem::new("123", 2usize), rx.receive_text_into());
+    assert_eq!(StreamItem::new("123", 0usize), rx.receive_text_into().await);
+    assert_eq!(StreamItem::new("123", 1usize), rx.receive_text_into().await);
+    assert_eq!(StreamItem::new("123", 2usize), rx.receive_text_into().await);
     assert_eq!(
         Completion::<usize>::error("123", "Ran out of data!"),
-        rx.receive_text_into()
+        rx.receive_text_into().await
     );
-    rx.assert_none();
+    rx.assert_none().await;
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test]
 async fn test_add_stream() {
     pub async fn add_stream(mut input: UploadStream<i32>) -> impl HubResponse {
         let mut result = Vec::new();
@@ -238,7 +241,8 @@ async fn test_add_stream() {
     .await
     .unwrap();
 
-    drop(tx);
-
-    assert_eq!(Completion::with_result("123", 3), rx.receive_text_into());
+    assert_eq!(
+        Completion::with_result("123", 3),
+        rx.receive_text_into().await
+    );
 }
