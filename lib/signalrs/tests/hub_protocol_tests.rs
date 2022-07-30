@@ -31,7 +31,7 @@ async fn test_add() {
         a + b
     }
 
-    let hub = HubBuilder::new().method("add", add).build();
+    let hub = HubBuilder::new().methodv2("add", add).build();
     let (tx, rx) = common::create_channels();
     let invocation = Invocation::with_id("123", "add", Some((1i32, 2i32))).to_json();
 
@@ -39,10 +39,7 @@ async fn test_add() {
         .await
         .unwrap();
 
-    assert_eq!(
-        Completion::with_result("123", 3),
-        rx.receive_text_into().await
-    );
+    assert_eq!(Completion::result("123", 3), rx.receive_text_into().await);
 }
 
 #[tokio::test]
@@ -52,7 +49,7 @@ async fn test_non_blocking() {
     }
 
     let hub = HubBuilder::new()
-        .method("non_blocking", non_blocking)
+        .methodv2("non_blocking", non_blocking)
         .build();
     let (tx, rx) = common::create_channels();
     let invocation = Invocation::without_id("non_blocking", Some((1i32, 2i32))).to_json();
@@ -72,7 +69,7 @@ async fn test_single_result_failure() {
     }
 
     let hub = HubBuilder::new()
-        .method("single_result_failure", single_result_failure)
+        .methodv2("single_result_failure", single_result_failure)
         .build();
     let (tx, rx) = common::create_channels();
     let invocation =
@@ -105,23 +102,25 @@ async fn test_batched() {
         .unwrap();
 
     assert_eq!(
-        Completion::with_result("123", vec![0, 1, 2, 3, 4]),
+        Completion::result("123", vec![0, 1, 2, 3, 4]),
         rx.receive_text_into().await
     );
 }
 
 #[tokio::test]
 async fn test_stream() {
-    async fn stream(Args(count): Args<usize>) -> impl HubResponse {
-        HubStream::infallible(stream! {
+    async fn stream(Args(count): Args<usize>) -> impl Stream<Item = usize> {
+        stream! {
             for i in 0..count {
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                 yield i;
             }
-        })
+        }
     }
 
-    let hub = HubBuilder::new().method("stream", stream).build();
+    let hub = HubBuilder::new()
+        .streaming_methodv2("stream", stream)
+        .build();
 
     let invocation = StreamInvocation::new("123", "stream", Some((3usize,))).to_json();
 
@@ -140,18 +139,20 @@ async fn test_stream() {
 
 #[tokio::test]
 async fn test_stream_cancel() {
-    async fn stream(Args(count): Args<usize>) -> impl HubResponse {
-        HubStream::infallible(stream! {
+    async fn stream(Args(count): Args<usize>) -> impl Stream<Item = usize> {
+        stream! {
             for i in 0..count {
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                 trace!("yielding {}", i);
                 yield i;
             }
             trace!("stream finishing");
-        })
+        }
     }
 
-    let hub = HubBuilder::new().streaming_method("stream", stream).build();
+    let hub = HubBuilder::new()
+        .streaming_methodv2("stream", stream)
+        .build();
     let (tx, rx) = common::create_channels();
     let state: ConnectionState = Default::default();
 
@@ -172,18 +173,18 @@ async fn test_stream_cancel() {
 
 #[tokio::test]
 async fn test_stream_failure() {
-    async fn stream_failure(Args(count): Args<usize>) -> impl HubResponse {
-        HubStream::fallible(stream! {
+    async fn stream_failure(Args(count): Args<usize>) -> impl Stream<Item = Result<usize, String>> {
+        stream! {
             for i in 0..count {
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                 yield Ok(i);
             }
             yield Err("Ran out of data!".to_string())
-        })
+        }
     }
 
     let hub = HubBuilder::new()
-        .method("stream_failure", stream_failure)
+        .streaming_methodv2("stream_failure", stream_failure)
         .build();
 
     let invocation = StreamInvocation::new("123", "stream_failure", Some((3usize,))).to_json();
@@ -206,7 +207,7 @@ async fn test_stream_failure() {
 
 #[tokio::test]
 async fn test_add_stream() {
-    pub async fn add_stream(mut input: UploadStream<i32>) -> impl HubResponse {
+    pub async fn add_stream(mut input: UploadStream<i32>) -> i32 {
         let mut result = Vec::new();
         trace!("add_stream invoked");
         while let Some(i) = input.next().await {
@@ -217,7 +218,7 @@ async fn test_add_stream() {
         result.into_iter().sum::<i32>()
     }
 
-    let hub = HubBuilder::new().method("add_stream", add_stream).build();
+    let hub = HubBuilder::new().methodv2("add_stream", add_stream).build();
     let state: ConnectionState = Default::default();
     let (tx, rx) = common::create_channels();
 
@@ -261,8 +262,5 @@ async fn test_add_stream() {
     .await
     .unwrap();
 
-    assert_eq!(
-        Completion::with_result("123", 3),
-        rx.receive_text_into().await
-    );
+    assert_eq!(Completion::result("123", 3), rx.receive_text_into().await);
 }

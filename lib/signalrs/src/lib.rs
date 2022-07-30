@@ -4,7 +4,7 @@ pub mod connection;
 pub mod error;
 pub mod extensions;
 pub mod extract;
-pub mod handler;
+mod functions;
 pub mod hub;
 pub mod invocation;
 pub mod negotiate;

@@ -3,7 +3,7 @@ pub mod builder;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 use crate::{
-    connection::ConnectionState, error::SignalRError, handler::callable::Callable,
+    connection::ConnectionState, error::SignalRError, functions::Callable,
     invocation::HubInvocation, protocol::*, response::ResponseSink, serialization,
 };
 use futures::{Future, SinkExt};
@@ -86,10 +86,15 @@ impl Hub {
                 });
 
                 if let Some(callable) = self.methods.get(&target) {
-                    let request = HubInvocation::text(text.to_owned(), connection_state);
+                    // FIXME: do it in constructor!
+                    let mut request = HubInvocation::text(text.to_owned(), connection_state);
+                    let OptionalId { invocation_id } =
+                        serde_json::from_str(&request.unwrap_text())?;
+                    request.invocation_state.invocation_id = invocation_id;
+
                     callable.call(request, output).await?;
                 } else {
-                    error!("method {target} not found")
+                    error!("method '{target}' not found")
                 }
             }
             MessageType::CancelInvocation => {

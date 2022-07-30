@@ -1,6 +1,9 @@
+use futures::Stream;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{collections::HashMap, convert::From};
+
+use crate::error::SignalRError;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -195,7 +198,7 @@ impl<R> Completion<R> {
         Self::new(invocation_id, None, None)
     }
 
-    pub fn with_result(invocation_id: impl Into<String>, result: R) -> Self {
+    pub fn result(invocation_id: impl Into<String>, result: R) -> Self {
         Self::new(invocation_id, Some(result), None)
     }
 

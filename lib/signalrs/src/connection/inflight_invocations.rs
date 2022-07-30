@@ -3,8 +3,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use log::*;
-
 use futures::Future;
 use tokio_util::sync::CancellationToken;
 
@@ -34,6 +32,13 @@ impl InflightInvocations {
         let _ = (*guard).remove(invocation_id);
     }
 
+    pub fn get(&self, invocation_id: &str) -> Option<CancellationToken> {
+        let mut guard = self.value.lock().unwrap();
+        (*guard)
+            .get(invocation_id)
+            .and_then(|tkn| Some(tkn.clone()))
+    }
+
     pub fn insert<F>(&self, invocation_id: String, fut: F, cancellation_token: CancellationToken)
     where
         F: Future<Output = ()> + Send + 'static,
@@ -47,6 +52,11 @@ impl InflightInvocations {
             this.remove(&id);
         });
 
+        (*guard).insert(invocation_id, cancellation_token);
+    }
+
+    pub fn insert_token(&self, invocation_id: String, cancellation_token: CancellationToken) {
+        let mut guard = self.value.lock().unwrap();
         (*guard).insert(invocation_id, cancellation_token);
     }
 }

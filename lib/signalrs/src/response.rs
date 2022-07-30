@@ -1,20 +1,23 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, pin::Pin};
 
 use crate::{
     error::{InternalCommuncationError, SignalRError},
     extensions::StreamExtR,
+    invocation::HubInvocation,
     protocol::*,
     serialization,
 };
 use async_trait;
 use flume::r#async::SendSink;
 use futures::{
+    pin_mut,
     sink::{Sink, SinkExt},
     stream::{Stream, StreamExt},
     Future, FutureExt,
 };
 use pin_project::pin_project;
 use serde::Serialize;
+use tokio_util::sync::CancellationToken;
 
 #[non_exhaustive]
 #[derive(Debug, Clone)]
@@ -275,86 +278,138 @@ where
     }
 }
 
-// idea!
-// pub trait HubResponse {
-//     async fn prepare_stream(
-//         self,
-//         invocation_id: String,
-//     ) -> impl Stream<Item = String>
+// =========================================== //
 
-//
-// pub trait HubResponseExt : HubResponse {
-//
-// tu walnąć forward, wtedy HubResponse jest object safe o ile Stream będzie konkretną implementacją
-//
-//
-//
+pub trait IntoResponse {
+    type Out: Serialize + Send;
 
-pub trait HubResponseV2 {
-    type Stream: Stream<Item = Self::Out>;
-    type Out;
-
-    fn into_stream(self) -> Self::Stream;
-}
-
-#[derive(Debug)]
-pub struct ReadyStream<T>(futures::future::Ready<T>);
-
-impl<T> Stream for ReadyStream<T> {
-    type Item = T;
-
-    fn poll_next(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
-        self.0.poll_unpin(cx).map(|x| Some(x))
+    /// Specifies if this item carries an error variant
+    ///
+    /// If so, this item will break the response stream with error message sent to the client.
+    fn is_error(&self) -> bool {
+        false
     }
+    fn into_completion(self, invocation_id: String) -> Completion<Self::Out>;
+    fn into_stream_item(self, invocation_id: String) -> StreamItem<Self::Out>;
 }
 
-macro_rules! impl_hub_response_v2 {
+macro_rules! impl_into_response {
     ($($type:ty),+) => {
-    $(
-        impl HubResponseV2 for $type {
-            type Stream = ReadyStream<Self::Out>;
-            type Out = $type;
+        $(
+            impl IntoResponse for $type {
+                type Out = Self;
 
-            fn into_stream(self) -> Self::Stream {
-                ReadyStream(futures::future::ready(self))
+                fn into_completion(self, invocation_id: String) -> Completion<Self::Out> {
+                    Completion::result(invocation_id, self)
+                }
+
+                fn into_stream_item(self, invocation_id: String) -> StreamItem<Self::Out> {
+                    StreamItem::new(invocation_id, self)
+                }
             }
-        }
-    )*
+        )+
     };
 }
 
-impl_hub_response_v2!(usize, isize);
-impl_hub_response_v2!(i8, i16, i32, i64, i128);
-impl_hub_response_v2!(u8, u16, u32, u64, u128);
-impl_hub_response_v2!(f32, f64);
-impl_hub_response_v2!(String, &'static str);
+impl_into_response!(());
+impl_into_response!(usize, isize);
+impl_into_response!(i8, i16, i32, i64, i128);
+impl_into_response!(u8, u16, u32, u64, u128);
+impl_into_response!(f32, f64);
+impl_into_response!(String, &'static str);
 
-impl<Wrapped> Stream for InfallibleHubStream<Wrapped>
+impl<T, E> IntoResponse for Result<T, E>
 where
-    Wrapped: Stream,
+    T: Serialize + Send,
+    E: Into<String> + Debug,
 {
-    type Item = <Wrapped as Stream>::Item;
+    type Out = T;
 
-    fn poll_next(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
-        let mut pinned = self.project();
-        pinned.inner.poll_next_unpin(cx)
+    fn is_error(&self) -> bool {
+        self.is_err()
+    }
+
+    fn into_completion(self, invocation_id: String) -> Completion<Self::Out> {
+        match self {
+            Ok(result) => Completion::result(invocation_id, result),
+            Err(error) => Completion::error(invocation_id, error),
+        }
+    }
+
+    fn into_stream_item(self, invocation_id: String) -> StreamItem<Self::Out> {
+        let value = self.expect("stream item should never be constructed from error");
+        StreamItem::new(invocation_id, value)
     }
 }
 
-impl<Wrapped> HubResponseV2 for InfallibleHubStream<Wrapped>
+pub trait IntoHubStream {
+    type Stream: Stream<Item = Self::Out> + Send;
+    type Out: IntoResponse + Send;
+    fn into_stream(self) -> Self::Stream;
+}
+
+impl<T> IntoHubStream for T
 where
-    Wrapped: Stream,
+    T: Stream + Send,
+    <T as Stream>::Item: IntoResponse + Send,
 {
-    type Stream = InfallibleHubStream<Wrapped>;
-    type Out = <Wrapped as Stream>::Item;
+    type Stream = T;
+    type Out = <T as Stream>::Item;
 
     fn into_stream(self) -> Self::Stream {
         self
     }
+}
+
+pub async fn forward_single<Res>(
+    msg: Res,
+    invocation: HubInvocation,
+    mut sink: ResponseSink,
+) -> Result<(), SignalRError>
+where
+    Res: IntoResponse,
+    <Res as IntoResponse>::Out: Serialize,
+{
+    let OptionalId { invocation_id } = serde_json::from_str(&invocation.unwrap_text())?;
+    if let Some(invocation_id) = invocation_id {
+        let completion = msg.into_completion(invocation_id);
+        let json = serde_json::to_string(&completion)?;
+        sink.send(json).await?;
+    }
+
+    Ok(())
+}
+
+pub async fn forward_stream<Res>(
+    stream: Res,
+    invocation: HubInvocation,
+    mut sink: ResponseSink,
+) -> Result<(), SignalRError>
+where
+    Res: IntoHubStream,
+{
+    let Id { invocation_id } = serde_json::from_str(&invocation.unwrap_text())?;
+
+    let stream = stream.into_stream();
+
+    pin_mut!(stream);
+
+    while let Some(item) = stream.next().await {
+        if item.is_error() {
+            let completion = item.into_completion(invocation_id.clone());
+            let json = serde_json::to_string(&completion)?;
+            sink.send(json).await?;
+            return Ok(()); // expected error
+        }
+
+        let stream_item = item.into_stream_item(invocation_id.clone());
+        let json = serde_json::to_string(&stream_item)?;
+        sink.send(json).await?;
+    }
+
+    let completion = Completion::<()>::ok(invocation_id);
+    let json = serde_json::to_string(&completion)?;
+    sink.send(json).await?;
+
+    Ok(())
 }
