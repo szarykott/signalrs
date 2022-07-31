@@ -342,6 +342,36 @@ where
     }
 }
 
+impl<T> IntoResponse for Option<T>
+where
+    T: Serialize + Send + Default,
+{
+    type Out = Self;
+
+    fn into_completion(self, invocation_id: String) -> Completion<Self::Out> {
+        Completion::result(invocation_id, self)
+    }
+
+    fn into_stream_item(self, invocation_id: String) -> StreamItem<Self::Out> {
+        StreamItem::new(invocation_id, self)
+    }
+}
+
+impl<T> IntoResponse for Vec<T>
+where
+    T: Serialize + Send + Default,
+{
+    type Out = Self;
+
+    fn into_completion(self, invocation_id: String) -> Completion<Self::Out> {
+        Completion::result(invocation_id, self)
+    }
+
+    fn into_stream_item(self, invocation_id: String) -> StreamItem<Self::Out> {
+        StreamItem::new(invocation_id, self)
+    }
+}
+
 pub trait IntoHubStream {
     type Stream: Stream<Item = Self::Out> + Send;
     type Out: IntoResponse + Send;
@@ -370,8 +400,7 @@ where
     Res: IntoResponse,
     <Res as IntoResponse>::Out: Serialize,
 {
-    let OptionalId { invocation_id } = serde_json::from_str(&invocation.unwrap_text())?;
-    if let Some(invocation_id) = invocation_id {
+    if let Some(invocation_id) = invocation.invocation_state.invocation_id {
         let completion = msg.into_completion(invocation_id);
         let json = serde_json::to_string(&completion)?;
         sink.send(json).await?;

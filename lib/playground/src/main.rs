@@ -10,7 +10,7 @@ use axum::{
     routing::{get, get_service, post},
     Router,
 };
-use futures::{select, sink::SinkExt, stream::StreamExt, FutureExt};
+use futures::{select, sink::SinkExt, stream::StreamExt, FutureExt, Stream};
 use log::*;
 use signalrs::{
     connection::ConnectionState,
@@ -184,16 +184,16 @@ async fn add(Args((a, b)): Args<(i32, i32)>) -> i32 {
     a + b
 }
 
-pub async fn stream(Args(count): Args<usize>) -> impl HubResponse {
-    HubStream::infallible(stream! {
+pub async fn stream(Args(count): Args<usize>) -> impl Stream<Item = usize> {
+    stream! {
         for i in 0..count {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             yield i;
         }
-    })
+    }
 }
 
-pub async fn add_stream(mut input: UploadStream<i32>) -> impl HubResponse {
+pub async fn add_stream(mut input: UploadStream<i32>) -> i32 {
     let mut result = Vec::new();
     while let Some(i) = input.next().await {
         result.push(i);
@@ -202,11 +202,14 @@ pub async fn add_stream(mut input: UploadStream<i32>) -> impl HubResponse {
     result.into_iter().sum::<i32>()
 }
 
-pub async fn stream2(Args(count): Args<usize>, _input: UploadStream<i32>) -> impl HubResponse {
-    HubStream::infallible(stream! {
+pub async fn stream2(
+    Args(count): Args<usize>,
+    _input: UploadStream<i32>,
+) -> impl Stream<Item = usize> {
+    stream! {
         for i in 0..count {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             yield i;
         }
-    })
+    }
 }

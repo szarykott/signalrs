@@ -31,7 +31,7 @@ async fn test_add() {
         a + b
     }
 
-    let hub = HubBuilder::new().methodv2("add", add).build();
+    let hub = HubBuilder::new().method("add", add).build();
     let (tx, rx) = common::create_channels();
     let invocation = Invocation::with_id("123", "add", Some((1i32, 2i32))).to_json();
 
@@ -49,7 +49,7 @@ async fn test_non_blocking() {
     }
 
     let hub = HubBuilder::new()
-        .methodv2("non_blocking", non_blocking)
+        .method("non_blocking", non_blocking)
         .build();
     let (tx, rx) = common::create_channels();
     let invocation = Invocation::without_id("non_blocking", Some((1i32, 2i32))).to_json();
@@ -69,7 +69,7 @@ async fn test_single_result_failure() {
     }
 
     let hub = HubBuilder::new()
-        .methodv2("single_result_failure", single_result_failure)
+        .method("single_result_failure", single_result_failure)
         .build();
     let (tx, rx) = common::create_channels();
     let invocation =
@@ -118,9 +118,7 @@ async fn test_stream() {
         }
     }
 
-    let hub = HubBuilder::new()
-        .streaming_methodv2("stream", stream)
-        .build();
+    let hub = HubBuilder::new().streaming_method("stream", stream).build();
 
     let invocation = StreamInvocation::new("123", "stream", Some((3usize,))).to_json();
 
@@ -150,9 +148,7 @@ async fn test_stream_cancel() {
         }
     }
 
-    let hub = HubBuilder::new()
-        .streaming_methodv2("stream", stream)
-        .build();
+    let hub = HubBuilder::new().streaming_method("stream", stream).build();
     let (tx, rx) = common::create_channels();
     let state: ConnectionState = Default::default();
 
@@ -184,7 +180,7 @@ async fn test_stream_failure() {
     }
 
     let hub = HubBuilder::new()
-        .streaming_methodv2("stream_failure", stream_failure)
+        .streaming_method("stream_failure", stream_failure)
         .build();
 
     let invocation = StreamInvocation::new("123", "stream_failure", Some((3usize,))).to_json();
@@ -218,7 +214,7 @@ async fn test_add_stream() {
         result.into_iter().sum::<i32>()
     }
 
-    let hub = HubBuilder::new().methodv2("add_stream", add_stream).build();
+    let hub = HubBuilder::new().method("add_stream", add_stream).build();
     let state: ConnectionState = Default::default();
     let (tx, rx) = common::create_channels();
 

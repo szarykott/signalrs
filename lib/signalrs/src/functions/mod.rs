@@ -1,5 +1,5 @@
 mod callable;
 mod handler;
 
-pub(crate) use callable::{Callable, IntoCallable, NonStreamingCallable, StreamingCallable};
-pub(crate) use handler::{Handler, HandlerV2, StreamingHandlerV2};
+pub(crate) use callable::{Callable, NonStreamingCallable, StreamingCallable};
+pub(crate) use handler::{Handler, StreamingHandler};
