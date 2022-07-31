@@ -77,209 +77,6 @@ impl Sink<String> for ResponseSink {
     }
 }
 
-#[async_trait::async_trait]
-pub trait HubResponse {
-    async fn forward(self, invocation_id: String, sink: ResponseSink) -> Result<(), SignalRError>;
-}
-
-#[async_trait::async_trait]
-impl HubResponse for () {
-    async fn forward(
-        self,
-        _invocation_id: String,
-        _sink: ResponseSink,
-    ) -> Result<(), SignalRError> {
-        Ok(())
-    }
-}
-
-macro_rules! impl_hub_response {
-    ($($type:ty),+) => {
-    $(
-        #[async_trait::async_trait]
-        impl HubResponse for $type
-        {
-            async fn forward(
-                self,
-                invocation_id: String,
-                mut sink: ResponseSink,
-            ) -> Result<(), SignalRError>
-            {
-                let completion = Completion::new(invocation_id, Some(self), None);
-                let serialized = serialization::to_json(&completion)?;
-                sink.send(serialized).await.map_err(|e| e.into())
-            }
-        }
-    )*
-    };
-}
-
-impl_hub_response!(usize, isize);
-impl_hub_response!(i8, i16, i32, i64, i128);
-impl_hub_response!(u8, u16, u32, u64, u128);
-impl_hub_response!(f32, f64);
-impl_hub_response!(String, &'static str);
-
-#[async_trait::async_trait]
-impl<R> HubResponse for Vec<R>
-where
-    R: HubResponse + Send + Serialize,
-{
-    async fn forward(
-        self,
-        invocation_id: String,
-        mut sink: ResponseSink,
-    ) -> Result<(), SignalRError> {
-        let completion = Completion::new(invocation_id, Some(self), None);
-        let text = serialization::to_json(&completion)?;
-        sink.send(text).await.map_err(|e| e.into())
-    }
-}
-
-#[async_trait::async_trait]
-impl<R, E> HubResponse for Result<R, E>
-where
-    R: HubResponse + Send + Serialize,
-    E: ToString + Send,
-{
-    async fn forward(
-        self,
-        invocation_id: String,
-        mut sink: ResponseSink,
-    ) -> Result<(), SignalRError> {
-        let completion = match self {
-            Ok(ok) => Completion::new(invocation_id, Some(ok), None),
-            Err(err) => Completion::new(invocation_id, None, Some(err.to_string())),
-        };
-
-        let text = serialization::to_json(&completion)?;
-
-        sink.send(text).await.map_err(|e| e.into())
-    }
-}
-
-// TODO: implement for Result and use to allow user to define their own faillible stream
-pub trait Try {}
-
-#[derive(Debug)]
-pub struct HubStream;
-
-#[derive(Debug)]
-#[pin_project]
-struct InfallibleHubStream<S> {
-    #[pin]
-    inner: S,
-}
-
-#[derive(Debug)]
-struct FallibleHubStream<S>(S);
-
-impl HubStream {
-    pub fn infallible<S, I>(stream: S) -> impl HubResponse
-    where
-        S: Stream<Item = I> + Send + 'static,
-        I: Send + Serialize,
-    {
-        InfallibleHubStream { inner: stream }
-    }
-
-    pub fn fallible<S, I>(stream: S) -> impl HubResponse
-    where
-        S: Stream<Item = Result<I, String>> + Send + 'static,
-        I: Send + Serialize,
-    {
-        FallibleHubStream(stream)
-    }
-}
-
-#[async_trait::async_trait]
-impl<S, I> HubResponse for InfallibleHubStream<S>
-where
-    S: Stream<Item = I> + Send,
-    I: Serialize + Send,
-{
-    async fn forward(self, invocation_id: String, sink: ResponseSink) -> Result<(), SignalRError> {
-        let result = self.inner;
-
-        let responses = result
-            .zip(futures::stream::repeat(invocation_id.clone()))
-            .map(|(e, id)| StreamItem::new(id, e))
-            .map(|si| serialization::to_json(&si).unwrap())
-            .chain(futures::stream::once(async {
-                let completion: Completion<usize> = Completion::new(invocation_id, None, None);
-                serialization::to_json(&completion).unwrap()
-            }));
-
-        let mut responses = Box::pin(responses);
-        let mut sink = Box::pin(sink);
-
-        while let Some(item) = responses.next().await {
-            sink.send(item).await?;
-        }
-
-        Ok(())
-    }
-}
-
-#[async_trait::async_trait]
-impl<S, I> HubResponse for FallibleHubStream<S>
-where
-    S: Stream<Item = Result<I, String>> + Send,
-    I: Serialize + Send,
-{
-    async fn forward(self, invocation_id: String, sink: ResponseSink) -> Result<(), SignalRError> {
-        let result = self.0;
-
-        let responses = result
-            .take_while_inclusive(|e| e.is_ok())
-            .zip(futures::stream::repeat(invocation_id.clone()))
-            .map(|(e, id)| -> Result<StreamItem<I>, Completion<()>> {
-                match e {
-                    Ok(item) => Ok(StreamItem::new(id, item)),
-                    Err(e) => Err(Completion::<()>::new(id, None, Some(e))),
-                }
-            })
-            .chain_if(
-                |e| e.is_ok(),
-                futures::stream::once(async {
-                    let r: Result<StreamItem<I>, Completion<()>> =
-                        Err(Completion::<()>::new(invocation_id, None, None));
-                    r
-                }),
-            )
-            .map(|e| match e {
-                Ok(si) => serialization::to_json(&si).unwrap(),
-                Err(cmp) => serialization::to_json(&cmp).unwrap(),
-            });
-
-        let mut responses = Box::pin(responses);
-        let mut sink = Box::pin(sink);
-
-        while let Some(item) = responses.next().await {
-            sink.send(item).await?;
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-pub struct HubFutureWrapper<T>(pub T);
-
-#[async_trait::async_trait]
-impl<F, O> HubResponse for HubFutureWrapper<F>
-where
-    F: Future<Output = O> + Send,
-    O: HubResponse + Send,
-{
-    async fn forward(self, invocation_id: String, sink: ResponseSink) -> Result<(), SignalRError> {
-        let result = self.0.await;
-        result.forward(invocation_id, sink).await
-    }
-}
-
-// =========================================== //
-
 pub trait IntoResponse {
     type Out: Serialize + Send;
 
@@ -393,8 +190,7 @@ where
 
 pub async fn forward_single<Res>(
     msg: Res,
-    invocation: HubInvocation,
-    mut sink: ResponseSink,
+    mut invocation: HubInvocation,
 ) -> Result<(), SignalRError>
 where
     Res: IntoResponse,
@@ -403,7 +199,7 @@ where
     if let Some(invocation_id) = invocation.invocation_state.invocation_id {
         let completion = msg.into_completion(invocation_id);
         let json = serde_json::to_string(&completion)?;
-        sink.send(json).await?;
+        invocation.output.send(json).await?;
     }
 
     Ok(())
@@ -411,8 +207,7 @@ where
 
 pub async fn forward_stream<Res>(
     stream: Res,
-    invocation: HubInvocation,
-    mut sink: ResponseSink,
+    mut invocation: HubInvocation,
 ) -> Result<(), SignalRError>
 where
     Res: IntoHubStream,
@@ -427,18 +222,18 @@ where
         if item.is_error() {
             let completion = item.into_completion(invocation_id.clone());
             let json = serde_json::to_string(&completion)?;
-            sink.send(json).await?;
+            invocation.output.send(json).await?;
             return Ok(()); // expected error
         }
 
         let stream_item = item.into_stream_item(invocation_id.clone());
         let json = serde_json::to_string(&stream_item)?;
-        sink.send(json).await?;
+        invocation.output.send(json).await?;
     }
 
     let completion = Completion::<()>::ok(invocation_id);
     let json = serde_json::to_string(&completion)?;
-    sink.send(json).await?;
+    invocation.output.send(json).await?;
 
     Ok(())
 }

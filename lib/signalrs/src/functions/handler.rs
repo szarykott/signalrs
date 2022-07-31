@@ -9,13 +9,13 @@ use log::*;
 pub trait Handler<T> {
     type Future: Future<Output = Result<(), SignalRError>> + Send;
 
-    fn call(self, request: HubInvocation, output: ResponseSink) -> Self::Future;
+    fn call(self, request: HubInvocation) -> Self::Future;
 }
 
 pub trait StreamingHandler<T> {
     type Future: Future<Output = Result<(), SignalRError>> + Send;
 
-    fn call_streaming(self, request: HubInvocation, output: ResponseSink) -> Self::Future;
+    fn call_streaming(self, request: HubInvocation) -> Self::Future;
 }
 
 impl<Fn, Fut, Ret> Handler<()> for Fn
@@ -26,11 +26,11 @@ where
 {
     type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
 
-    fn call(self, request: HubInvocation, output: ResponseSink) -> Self::Future {
+    fn call(self, request: HubInvocation) -> Self::Future {
         Box::pin(async move {
             tokio::spawn(async move {
                 let response = (self)().await;
-                forward_single(response, request, output).await
+                forward_single(response, request).await
             });
 
             Ok(())
@@ -47,13 +47,13 @@ where
 {
     type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
 
-    fn call(self, mut request: HubInvocation, output: ResponseSink) -> Self::Future {
+    fn call(self, mut request: HubInvocation) -> Self::Future {
         Box::pin(async move {
             let t = FromInvocation::try_from_request(&mut request)?;
 
             tokio::spawn(async move {
                 let response = (self)(t).await;
-                forward_single(response, request, output).await
+                forward_single(response, request).await
             });
 
             Ok(())
@@ -69,12 +69,12 @@ where
 {
     type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
 
-    fn call_streaming(self, request: HubInvocation, output: ResponseSink) -> Self::Future {
+    fn call_streaming(self, request: HubInvocation) -> Self::Future {
         Box::pin(async move {
             let ct = request.get_cancellation_token();
             tokio::spawn(async move {
                 let response = (self)().await;
-                cancellable(ct, forward_stream(response, request, output)).await;
+                cancellable(ct, forward_stream(response, request)).await;
             });
 
             Ok(())
@@ -91,14 +91,14 @@ where
 {
     type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
 
-    fn call_streaming(self, mut request: HubInvocation, output: ResponseSink) -> Self::Future {
+    fn call_streaming(self, mut request: HubInvocation) -> Self::Future {
         Box::pin(async move {
             let t = FromInvocation::try_from_request(&mut request)?;
 
             let ct = request.get_cancellation_token();
             tokio::spawn(async move {
                 let response = (self)(t).await;
-                cancellable(ct, forward_stream(response, request, output)).await;
+                cancellable(ct, forward_stream(response, request)).await;
             });
 
             Ok(())
@@ -120,7 +120,7 @@ macro_rules! impl_handlersv2 {
         {
             type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
 
-            fn call(self, mut request: HubInvocation, output: ResponseSink) -> Self::Future {
+            fn call(self, mut request: HubInvocation) -> Self::Future {
                 Box::pin(async move {
                     $(
                         let $ty = FromInvocation::try_from_request(&mut request)?;
@@ -128,7 +128,7 @@ macro_rules! impl_handlersv2 {
 
                     tokio::spawn(async move {
                         let response = (self)($($ty,)+).await;
-                        forward_single(response, request, output).await
+                        forward_single(response, request).await
                     });
 
                     Ok(())
@@ -148,7 +148,7 @@ macro_rules! impl_handlersv2 {
         {
             type Future = Pin<Box<dyn Future<Output = Result<(), SignalRError>> + Send>>;
 
-            fn call_streaming(self, mut request: HubInvocation, output: ResponseSink) -> Self::Future {
+            fn call_streaming(self, mut request: HubInvocation) -> Self::Future {
                 Box::pin(async move {
                     $(
                         let $ty = FromInvocation::try_from_request(&mut request)?;
@@ -159,7 +159,7 @@ macro_rules! impl_handlersv2 {
                         let response = (self)($($ty,)+).await;
                         cancellable(
                             ct,
-                            forward_stream(response, request, output)
+                            forward_stream(response, request)
                         )
                         .await;
                     });

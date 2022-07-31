@@ -2,14 +2,14 @@ use std::marker::PhantomData;
 
 use futures::Future;
 
-use crate::{error::SignalRError, invocation::HubInvocation, response::ResponseSink};
+use crate::{error::SignalRError, invocation::HubInvocation};
 
 use super::{Handler, StreamingHandler};
 
 pub trait Callable {
     type Future: Future<Output = Result<(), SignalRError>> + Send;
 
-    fn call(&self, request: HubInvocation, output: ResponseSink) -> Self::Future;
+    fn call(&self, request: HubInvocation) -> Self::Future;
 }
 
 #[derive(Debug)]
@@ -48,9 +48,9 @@ where
 {
     type Future = <H as Handler<T>>::Future;
 
-    fn call(&self, request: HubInvocation, output: ResponseSink) -> Self::Future {
+    fn call(&self, request: HubInvocation) -> Self::Future {
         let handler = self.handler.clone();
-        handler.call(request, output)
+        handler.call(request)
     }
 }
 
@@ -60,8 +60,8 @@ where
 {
     type Future = <H as StreamingHandler<T>>::Future;
 
-    fn call(&self, request: HubInvocation, output: ResponseSink) -> Self::Future {
+    fn call(&self, request: HubInvocation) -> Self::Future {
         let handler = self.handler.clone();
-        handler.call_streaming(request, output)
+        handler.call_streaming(request)
     }
 }

@@ -86,13 +86,8 @@ impl Hub {
                 });
 
                 if let Some(callable) = self.methods.get(&target) {
-                    // FIXME: do it in constructor!
-                    let mut request = HubInvocation::text(text.to_owned(), connection_state);
-                    let OptionalId { invocation_id } =
-                        serde_json::from_str(&request.unwrap_text())?;
-                    request.invocation_state.invocation_id = invocation_id;
-
-                    callable.call(request, output).await?;
+                    let request = HubInvocation::text(text.to_owned(), connection_state, output)?;
+                    callable.call(request).await?;
                 } else {
                     error!("method '{target}' not found")
                 }

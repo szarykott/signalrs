@@ -1,20 +1,34 @@
 use tokio_util::sync::CancellationToken;
 
-use crate::connection::ConnectionState;
+use crate::{
+    connection::ConnectionState, error::SignalRError, protocol::OptionalId, response::ResponseSink,
+};
 
 pub struct HubInvocation {
-    pub payload: Payload,
-    pub connection_state: ConnectionState,
-    pub invocation_state: InvocationState,
+    pub(crate) payload: Payload,
+    pub(crate) connection_state: ConnectionState,
+    pub(crate) invocation_state: InvocationState,
+    pub(crate) output: ResponseSink,
 }
 
 impl HubInvocation {
-    pub(crate) fn text(payload: String, connection_state: ConnectionState) -> Self {
-        HubInvocation {
+    pub(crate) fn text(
+        payload: String,
+        connection_state: ConnectionState,
+        output: ResponseSink,
+    ) -> Result<Self, SignalRError> {
+        let OptionalId { invocation_id } = serde_json::from_str(&payload)?;
+
+        let mut invocation = HubInvocation {
             payload: Payload::Text(payload),
             connection_state,
             invocation_state: Default::default(),
-        }
+            output,
+        };
+
+        invocation.invocation_state.invocation_id = invocation_id;
+
+        Ok(invocation)
     }
 }
 

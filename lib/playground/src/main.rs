@@ -17,7 +17,7 @@ use signalrs::{
     extract::{Args, UploadStream},
     hub::{builder::HubBuilder, Hub},
     negotiate::{NegotiateResponseV0, TransportSpec},
-    response::{HubResponse, HubStream, ResponseSink},
+    response::ResponseSink,
 };
 use simple_logger::SimpleLogger;
 use std::sync::Arc;

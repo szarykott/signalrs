@@ -15,7 +15,7 @@ use signalrs::{
     hub::builder::HubBuilder,
     invocation,
     protocol::*,
-    response::{HubResponse, HubStream, ResponseSink},
+    response::ResponseSink,
 };
 use simple_logger::SimpleLogger;
 
