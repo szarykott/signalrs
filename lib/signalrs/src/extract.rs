@@ -6,7 +6,7 @@ use std::{fmt::Debug, task::Poll};
 use thiserror::Error;
 
 use crate::{
-    connection::{upload_sinks::ClientSink, StreamItemPayload},
+    connection::{ClientSink, StreamItemPayload},
     error::SignalRError,
     invocation::{HubInvocation, Payload},
     protocol::{Arguments, ClientStreams},

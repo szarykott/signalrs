@@ -1,14 +1,26 @@
-use tokio_util::sync::CancellationToken;
-
 use crate::{
     connection::ConnectionState, error::SignalRError, protocol::OptionalId, response::ResponseSink,
 };
+use tokio_util::sync::CancellationToken;
 
 pub struct HubInvocation {
     pub(crate) payload: Payload,
     pub(crate) connection_state: ConnectionState,
     pub(crate) invocation_state: InvocationState,
     pub(crate) output: ResponseSink,
+}
+
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum Payload {
+    Text(String),
+    Binary(Vec<u8>),
+}
+
+#[derive(Default)]
+pub struct InvocationState {
+    pub(crate) next_stream_id_index: usize,
+    pub(crate) invocation_id: Option<String>,
 }
 
 impl HubInvocation {
@@ -26,26 +38,14 @@ impl HubInvocation {
             output,
         };
 
+        if let Some(id) = &invocation_id {
+            invocation.set_cancellation_token(id);
+        }
         invocation.invocation_state.invocation_id = invocation_id;
 
         Ok(invocation)
     }
-}
 
-#[derive(Debug)]
-#[non_exhaustive]
-pub enum Payload {
-    Text(String),
-    Binary(Vec<u8>),
-}
-
-#[derive(Default)]
-pub struct InvocationState {
-    pub(crate) next_stream_id_index: usize,
-    pub(crate) invocation_id: Option<String>,
-}
-
-impl HubInvocation {
     pub fn unwrap_text(&self) -> String {
         match &self.payload {
             Payload::Text(v) => v.clone(),
@@ -67,13 +67,25 @@ impl HubInvocation {
         if let Some(token) = existing_token {
             return Some(token);
         } else {
-            let token = CancellationToken::new();
+            return Some(self.set_cancellation_token(invocation_id));
+        }
+    }
 
-            self.connection_state
-                .inflight_invocations
-                .insert_token(invocation_id.to_string(), token.clone());
+    fn set_cancellation_token(&self, invocation_id: &str) -> CancellationToken {
+        let token = CancellationToken::new();
 
-            return Some(token);
+        self.connection_state
+            .inflight_invocations
+            .insert_token(invocation_id.to_string(), token.clone());
+
+        token
+    }
+}
+
+impl Drop for HubInvocation {
+    fn drop(&mut self) {
+        if let Some(id) = &self.invocation_state.invocation_id {
+            self.connection_state.inflight_invocations.remove(&id);
         }
     }
 }

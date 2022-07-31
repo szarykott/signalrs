@@ -1,23 +1,11 @@
-use std::{fmt::Debug, pin::Pin};
-
-use crate::{
-    error::{InternalCommuncationError, SignalRError},
-    extensions::StreamExtR,
-    invocation::HubInvocation,
-    protocol::*,
-    serialization,
-};
-use async_trait;
+use crate::{error::InternalCommuncationError, protocol::*};
 use flume::r#async::SendSink;
 use futures::{
-    pin_mut,
     sink::{Sink, SinkExt},
-    stream::{Stream, StreamExt},
-    Future, FutureExt,
+    stream::Stream,
 };
-use pin_project::pin_project;
 use serde::Serialize;
-use tokio_util::sync::CancellationToken;
+use std::fmt::Debug;
 
 #[non_exhaustive]
 #[derive(Debug, Clone)]
@@ -186,54 +174,4 @@ where
     fn into_stream(self) -> Self::Stream {
         self
     }
-}
-
-pub async fn forward_single<Res>(
-    msg: Res,
-    mut invocation: HubInvocation,
-) -> Result<(), SignalRError>
-where
-    Res: IntoResponse,
-    <Res as IntoResponse>::Out: Serialize,
-{
-    if let Some(invocation_id) = invocation.invocation_state.invocation_id {
-        let completion = msg.into_completion(invocation_id);
-        let json = serde_json::to_string(&completion)?;
-        invocation.output.send(json).await?;
-    }
-
-    Ok(())
-}
-
-pub async fn forward_stream<Res>(
-    stream: Res,
-    mut invocation: HubInvocation,
-) -> Result<(), SignalRError>
-where
-    Res: IntoHubStream,
-{
-    let Id { invocation_id } = serde_json::from_str(&invocation.unwrap_text())?;
-
-    let stream = stream.into_stream();
-
-    pin_mut!(stream);
-
-    while let Some(item) = stream.next().await {
-        if item.is_error() {
-            let completion = item.into_completion(invocation_id.clone());
-            let json = serde_json::to_string(&completion)?;
-            invocation.output.send(json).await?;
-            return Ok(()); // expected error
-        }
-
-        let stream_item = item.into_stream_item(invocation_id.clone());
-        let json = serde_json::to_string(&stream_item)?;
-        invocation.output.send(json).await?;
-    }
-
-    let completion = Completion::<()>::ok(invocation_id);
-    let json = serde_json::to_string(&completion)?;
-    invocation.output.send(json).await?;
-
-    Ok(())
 }

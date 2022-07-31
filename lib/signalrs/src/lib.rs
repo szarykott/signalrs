@@ -2,7 +2,6 @@
 
 pub mod connection;
 pub mod error;
-pub mod extensions;
 pub mod extract;
 mod functions;
 pub mod hub;

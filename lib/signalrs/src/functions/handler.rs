@@ -1,10 +1,14 @@
-use futures::{select, Future, FutureExt};
-use std::pin::Pin;
-use tokio_util::sync::CancellationToken;
-
-use crate::{error::SignalRError, extract::FromInvocation, invocation::HubInvocation, response::*};
-
+use crate::{
+    error::{CallerError, SignalRError},
+    extract::FromInvocation,
+    invocation::HubInvocation,
+    protocol::Completion,
+    response::*,
+};
+use futures::{pin_mut, select, Future, FutureExt, SinkExt, StreamExt};
 use log::*;
+use serde::Serialize;
+use std::pin::Pin;
 
 pub trait Handler<T> {
     type Future: Future<Output = Result<(), SignalRError>> + Send;
@@ -30,7 +34,9 @@ where
         Box::pin(async move {
             tokio::spawn(async move {
                 let response = (self)().await;
-                forward_single(response, request).await
+                if let Err(e) = forward_single(response, request).await {
+                    error!("error while calling method {}", e)
+                }
             });
 
             Ok(())
@@ -53,7 +59,9 @@ where
 
             tokio::spawn(async move {
                 let response = (self)(t).await;
-                forward_single(response, request).await
+                if let Err(e) = forward_single(response, request).await {
+                    error!("error while calling method {}", e)
+                }
             });
 
             Ok(())
@@ -71,10 +79,11 @@ where
 
     fn call_streaming(self, request: HubInvocation) -> Self::Future {
         Box::pin(async move {
-            let ct = request.get_cancellation_token();
             tokio::spawn(async move {
                 let response = (self)().await;
-                cancellable(ct, forward_stream(response, request)).await;
+                if let Err(e) = forward_stream(response, request).await {
+                    error!("error while calling streaming method {}", e)
+                }
             });
 
             Ok(())
@@ -95,10 +104,11 @@ where
         Box::pin(async move {
             let t = FromInvocation::try_from_request(&mut request)?;
 
-            let ct = request.get_cancellation_token();
             tokio::spawn(async move {
                 let response = (self)(t).await;
-                cancellable(ct, forward_stream(response, request)).await;
+                if let Err(e) = forward_stream(response, request).await {
+                    error!("error while calling streaming method {}", e)
+                }
             });
 
             Ok(())
@@ -128,7 +138,9 @@ macro_rules! impl_handlersv2 {
 
                     tokio::spawn(async move {
                         let response = (self)($($ty,)+).await;
-                        forward_single(response, request).await
+                        if let Err(e) = forward_single(response, request).await {
+                            error!("error while calling method {}", e)
+                        }
                     });
 
                     Ok(())
@@ -154,14 +166,11 @@ macro_rules! impl_handlersv2 {
                         let $ty = FromInvocation::try_from_request(&mut request)?;
                     )+
 
-                    let ct = request.get_cancellation_token();
                     tokio::spawn(async move {
                         let response = (self)($($ty,)+).await;
-                        cancellable(
-                            ct,
-                            forward_stream(response, request)
-                        )
-                        .await;
+                        if let Err(e) = forward_stream(response, request).await {
+                            error!("error while calling streaming method {}", e)
+                        }
                     });
 
                     Ok(())
@@ -184,13 +193,70 @@ impl_handlersv2!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
 impl_handlersv2!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
 impl_handlersv2!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
 
-async fn cancellable(token: Option<CancellationToken>, fut: impl Future) {
-    if let Some(token) = token {
-        select! {
-            _ = token.cancelled().fuse() => {},
-            _ = fut.fuse() => {}
-        }
-    } else {
-        fut.await;
+async fn forward_single<Res>(msg: Res, mut invocation: HubInvocation) -> Result<(), SignalRError>
+where
+    Res: IntoResponse,
+    <Res as IntoResponse>::Out: Serialize,
+{
+    if let Some(invocation_id) = &invocation.invocation_state.invocation_id {
+        let completion = msg.into_completion(invocation_id.clone());
+        let json = serde_json::to_string(&completion)?;
+        invocation.output.send(json).await?;
     }
+
+    Ok(())
+}
+
+async fn forward_stream<Res>(stream: Res, mut invocation: HubInvocation) -> Result<(), SignalRError>
+where
+    Res: IntoHubStream,
+{
+    let invocation_id = invocation
+        .invocation_state
+        .invocation_id
+        .clone()
+        .ok_or_else(|| CallerError::MissingInvocationId)?;
+
+    let stream = stream.into_stream();
+    pin_mut!(stream);
+
+    let cancellation_token = invocation.get_cancellation_token().unwrap_or_default();
+
+    loop {
+        select! {
+            item = stream.next().fuse() => {
+                if let Some(item) = item {
+                    if item.is_error() {
+                        let completion = item.into_completion(invocation_id.clone());
+                        let json = serde_json::to_string(&completion)?;
+                        invocation.output.send(json).await?;
+
+                        trace!("stream ending with error");
+
+                        return Ok(()); // expected error
+                    }
+
+                    let stream_item = item.into_stream_item(invocation_id.clone());
+                    let json = serde_json::to_string(&stream_item)?;
+                    invocation.output.send(json).await?;
+
+                    trace!("next stream item sent");
+                } else {
+                    break;
+                }
+            }
+            _ = cancellation_token.cancelled().fuse() => {
+                trace!("cancellation triggered");
+                break;
+            }
+        }
+    }
+
+    let completion = Completion::<()>::ok(invocation_id);
+    let json = serde_json::to_string(&completion)?;
+    invocation.output.send(json).await?;
+
+    trace!("stream invocation forwarded successfully");
+
+    Ok(())
 }

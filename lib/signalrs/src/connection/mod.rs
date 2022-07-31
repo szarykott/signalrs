@@ -3,10 +3,13 @@ use serde_json::Value;
 
 use crate::error::SignalRError;
 
-use self::{inflight_invocations::InflightInvocations, upload_sinks::UploadSinks};
+pub(crate) use self::{
+    inflight_invocations::InflightInvocations,
+    upload_sinks::{ClientSink, UploadSinks},
+};
 
-pub mod inflight_invocations;
-pub mod upload_sinks;
+mod inflight_invocations;
+mod upload_sinks;
 
 #[derive(Default, Clone)] // TODO: Is clone really needed?!
 pub struct ConnectionState {

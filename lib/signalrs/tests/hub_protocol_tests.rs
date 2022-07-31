@@ -131,7 +131,7 @@ async fn test_stream() {
     assert_eq!(StreamItem::new("123", 0usize), rx.receive_text_into().await);
     assert_eq!(StreamItem::new("123", 1usize), rx.receive_text_into().await);
     assert_eq!(StreamItem::new("123", 2usize), rx.receive_text_into().await);
-    assert_eq!(Completion::<usize>::ok("123"), rx.receive_text_into().await);
+    assert_eq!(Completion::<()>::ok("123"), rx.receive_text_into().await);
     rx.assert_none().await;
 }
 
@@ -164,6 +164,7 @@ async fn test_stream_cancel() {
         .await
         .unwrap();
 
+    assert_eq!(Completion::<()>::ok("123"), rx.receive_text_into().await);
     rx.assert_none().await;
 }
 

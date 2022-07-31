@@ -19,6 +19,11 @@ pub enum SignalRError {
         #[from]
         source: ExtractionError,
     },
+    #[error("An error occured due to a caller error")]
+    CallerError {
+        #[from]
+        source: CallerError,
+    },
 }
 
 #[derive(Error, Debug)]
@@ -33,4 +38,10 @@ pub enum InternalCommuncationError {
         #[from]
         source: flume::SendError<StreamItemPayload>,
     },
+}
+
+#[derive(Error, Debug)]
+pub enum CallerError {
+    #[error("Missing required invocation id")]
+    MissingInvocationId,
 }
