@@ -55,7 +55,7 @@ where
 
     fn call(self, mut request: HubInvocation) -> Self::Future {
         Box::pin(async move {
-            let t = FromInvocation::try_from_request(&mut request)?;
+            let t = FromInvocation::try_from_invocation(&mut request)?;
 
             tokio::spawn(async move {
                 let response = (self)(t).await;
@@ -102,7 +102,7 @@ where
 
     fn call_streaming(self, mut request: HubInvocation) -> Self::Future {
         Box::pin(async move {
-            let t = FromInvocation::try_from_request(&mut request)?;
+            let t = FromInvocation::try_from_invocation(&mut request)?;
 
             tokio::spawn(async move {
                 let response = (self)(t).await;
@@ -133,7 +133,7 @@ macro_rules! impl_handlersv2 {
             fn call(self, mut request: HubInvocation) -> Self::Future {
                 Box::pin(async move {
                     $(
-                        let $ty = FromInvocation::try_from_request(&mut request)?;
+                        let $ty = FromInvocation::try_from_invocation(&mut request)?;
                     )+
 
                     tokio::spawn(async move {
@@ -163,7 +163,7 @@ macro_rules! impl_handlersv2 {
             fn call_streaming(self, mut request: HubInvocation) -> Self::Future {
                 Box::pin(async move {
                     $(
-                        let $ty = FromInvocation::try_from_request(&mut request)?;
+                        let $ty = FromInvocation::try_from_invocation(&mut request)?;
                     )+
 
                     tokio::spawn(async move {

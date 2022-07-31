@@ -16,7 +16,7 @@ pub trait FromInvocation
 where
     Self: Sized,
 {
-    fn try_from_request(request: &mut HubInvocation) -> Result<Self, ExtractionError>;
+    fn try_from_invocation(request: &mut HubInvocation) -> Result<Self, ExtractionError>;
 }
 // ============= Error
 
@@ -46,7 +46,7 @@ impl<T> FromInvocation for Args<T>
 where
     T: DeserializeOwned,
 {
-    fn try_from_request(request: &mut HubInvocation) -> Result<Self, ExtractionError> {
+    fn try_from_invocation(request: &mut HubInvocation) -> Result<Self, ExtractionError> {
         match &request.payload {
             Payload::Text(text) => {
                 let arguments: Arguments<serde_json::Value> = serde_json::from_str(text.as_str())?;
@@ -128,7 +128,7 @@ impl<T> FromInvocation for UploadStream<T>
 where
     T: DeserializeOwned,
 {
-    fn try_from_request(request: &mut HubInvocation) -> Result<Self, ExtractionError> {
+    fn try_from_invocation(request: &mut HubInvocation) -> Result<Self, ExtractionError> {
         match &request.payload {
             Payload::Text(payload) => {
                 let client_streams: ClientStreams = serde_json::from_str(payload)?;

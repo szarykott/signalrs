@@ -84,12 +84,12 @@ impl Close {
 pub struct Invocation<A> {
     r#type: MessageType,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub headers: Option<HashMap<String, String>>,
+    headers: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub invocation_id: Option<String>,
-    pub target: String,
+    invocation_id: Option<String>,
+    target: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub arguments: Option<A>,
+    arguments: Option<A>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream_ids: Option<Vec<String>>,
 }
@@ -126,10 +126,10 @@ pub struct StreamInvocation<A> {
     r#type: MessageType,
     #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<HashMap<String, String>>,
-    pub invocation_id: String,
+    invocation_id: String,
     target: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub arguments: Option<A>,
+    arguments: Option<A>,
     #[serde(skip_serializing_if = "Option::is_none")]
     stream_ids: Option<Vec<String>>,
 }
@@ -158,8 +158,8 @@ pub struct StreamItem<I> {
     r#type: MessageType,
     #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<HashMap<String, String>>,
-    pub invocation_id: String,
-    pub item: I,
+    pub(crate) invocation_id: String,
+    pub(crate) item: I,
 }
 
 impl<I> StreamItem<I> {
