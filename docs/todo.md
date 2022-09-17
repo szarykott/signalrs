@@ -1,9 +1,20 @@
+# signalrs
+
+SignalR protocol implementation in Rust
+
+# References
+
+[HubProtcol](https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/HubProtocol.md)
+
+[TransportProtocol](https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/TransportProtocols.md)
+
 # Features
 
 1. Broadcast to other clients
 1. integration with axum as separate package
 1. Proper integration with tracing
 1. Documentation
+1. Macros crate for derive macro
 
 # Examples
 
