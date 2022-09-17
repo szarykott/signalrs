@@ -1,5 +1,9 @@
 use crate::{
-    connection::ConnectionState, error::SignalRError, protocol::OptionalId, response::ResponseSink,
+    connection::ConnectionState,
+    error::SignalRError,
+    extract::ExtractionError,
+    protocol::{Arguments, OptionalId},
+    response::ResponseSink,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -21,6 +25,12 @@ pub enum Payload {
 pub struct InvocationState {
     pub(crate) next_stream_id_index: usize,
     pub(crate) invocation_id: Option<String>,
+    pub(crate) arguments_left: Option<ArgumentsLeft>,
+}
+
+pub enum ArgumentsLeft {
+    Text(std::vec::IntoIter<serde_json::Value>),
+    Binary(Vec<u8>),
 }
 
 impl HubInvocation {
@@ -31,10 +41,22 @@ impl HubInvocation {
     ) -> Result<Self, SignalRError> {
         let OptionalId { invocation_id } = serde_json::from_str(&payload)?;
 
+        let mut invocation_state: InvocationState = Default::default();
+
+        let arguments_container: Arguments<serde_json::Value> = serde_json::from_str(&payload)?;
+
+        let arguments = match arguments_container.arguments {
+            Some(serde_json::Value::Array(arguments)) => arguments.into_iter(),
+            Some(_) => return Err(ExtractionError::NotAnArray.into()),
+            None => Vec::new().into_iter(),
+        };
+
+        invocation_state.arguments_left = Some(ArgumentsLeft::Text(arguments.into_iter()));
+
         let mut invocation = HubInvocation {
             payload: Payload::Text(payload),
             connection_state,
-            invocation_state: Default::default(),
+            invocation_state,
             output,
         };
 

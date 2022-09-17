@@ -116,7 +116,7 @@ where
     }
 }
 
-macro_rules! impl_handlersv2 {
+macro_rules! impl_handlers {
     ($($ty:ident),+) => {
         #[allow(non_snake_case)]
         impl<Fn, Fut, Ret, $($ty,)+> Handler<($($ty,)+)> for Fn
@@ -180,18 +180,18 @@ macro_rules! impl_handlersv2 {
     };
 }
 
-impl_handlersv2!(T1, T2);
-impl_handlersv2!(T1, T2, T3);
-impl_handlersv2!(T1, T2, T3, T4);
-impl_handlersv2!(T1, T2, T3, T4, T5);
-impl_handlersv2!(T1, T2, T3, T4, T5, T6);
-impl_handlersv2!(T1, T2, T3, T4, T5, T6, T7);
-impl_handlersv2!(T1, T2, T3, T4, T5, T6, T7, T8);
-impl_handlersv2!(T1, T2, T3, T4, T5, T6, T7, T8, T9);
-impl_handlersv2!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
-impl_handlersv2!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
-impl_handlersv2!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
-impl_handlersv2!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
+impl_handlers!(T1, T2);
+impl_handlers!(T1, T2, T3);
+impl_handlers!(T1, T2, T3, T4);
+impl_handlers!(T1, T2, T3, T4, T5);
+impl_handlers!(T1, T2, T3, T4, T5, T6);
+impl_handlers!(T1, T2, T3, T4, T5, T6, T7);
+impl_handlers!(T1, T2, T3, T4, T5, T6, T7, T8);
+impl_handlers!(T1, T2, T3, T4, T5, T6, T7, T8, T9);
+impl_handlers!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
+impl_handlers!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
+impl_handlers!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
+impl_handlers!(T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
 
 async fn forward_single<Res>(msg: Res, mut invocation: HubInvocation) -> Result<(), SignalRError>
 where

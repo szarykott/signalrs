@@ -8,7 +8,7 @@ use thiserror::Error;
 use crate::{
     connection::{ClientSink, StreamItemPayload},
     error::SignalRError,
-    invocation::{HubInvocation, Payload},
+    invocation::{ArgumentsLeft, HubInvocation, Payload},
     protocol::{Arguments, ClientStreams},
 };
 
@@ -33,9 +33,42 @@ pub enum ExtractionError {
         #[from]
         source: serde_json::Error,
     },
+    #[error("Provided arguemnts were not JSON array")]
+    NotAnArray,
     #[error("An error occured : {0}")]
     UserDefined(String),
 }
+
+// ============= Types
+
+// TODO: macro hygiene!
+macro_rules! impl_from_invocation {
+    ($($ty:ident),+) => {
+        $(
+            impl FromInvocation for $ty {
+                fn try_from_invocation(request: &mut HubInvocation) -> Result<Self, ExtractionError> {
+                    match request.invocation_state.arguments_left {
+                        Some(ArgumentsLeft::Text(ref mut values)) => {
+                            let next = values.next().ok_or_else(|| ExtractionError::MissingArgs)?;
+                            let value = serde_json::from_value(next)?;
+                            Ok(value)
+                        }
+                        Some(ArgumentsLeft::Binary(_)) => unimplemented!(),
+                        None => Err(ExtractionError::MissingArgs),
+                    }
+                }
+            }
+        )+
+
+    };
+}
+
+impl_from_invocation!(u8, u16, u32, u64, u128);
+impl_from_invocation!(i8, i16, i32, i64, i128);
+impl_from_invocation!(f32, f64);
+impl_from_invocation!(usize, isize);
+impl_from_invocation!(bool);
+impl_from_invocation!(String);
 
 // ============= Args
 

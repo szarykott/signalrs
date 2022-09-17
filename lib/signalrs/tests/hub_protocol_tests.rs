@@ -9,13 +9,8 @@ use futures::{
 use log::LevelFilter;
 use log::*;
 use signalrs::{
-    connection::ConnectionState,
-    error::SignalRError,
-    extract::{Args, UploadStream},
-    hub::builder::HubBuilder,
-    invocation,
-    protocol::*,
-    response::ResponseSink,
+    connection::ConnectionState, error::SignalRError, extract::UploadStream,
+    hub::builder::HubBuilder, invocation, protocol::*, response::ResponseSink,
 };
 use simple_logger::SimpleLogger;
 
@@ -27,7 +22,7 @@ mod common;
 
 #[tokio::test]
 async fn test_add() {
-    async fn add(Args((a, b)): Args<(i32, i32)>) -> i32 {
+    async fn add(a: i32, b: i32) -> i32 {
         a + b
     }
 
@@ -44,7 +39,7 @@ async fn test_add() {
 
 #[tokio::test]
 async fn test_non_blocking() {
-    async fn non_blocking(Args((a, b)): Args<(i32, i32)>) {
+    async fn non_blocking(a: i32, b: i32) {
         print!("result is {a} + {b} = {0}", a + b)
     }
 
@@ -64,7 +59,7 @@ async fn test_non_blocking() {
 #[tokio::test]
 async fn test_single_result_failure() {
     const EXPECTED_MESSAGE: &str = "It didn't work!";
-    async fn single_result_failure(Args((_, _)): Args<(i32, i32)>) -> Result<(), String> {
+    async fn single_result_failure(_: i32, _: i32) -> Result<(), String> {
         Err(EXPECTED_MESSAGE.to_owned())
     }
 
@@ -87,7 +82,7 @@ async fn test_single_result_failure() {
 
 #[tokio::test]
 async fn test_batched() {
-    async fn batched(Args(count): Args<usize>) -> Vec<usize> {
+    async fn batched(count: usize) -> Vec<usize> {
         std::iter::successors(Some(0usize), |p| Some(p + 1))
             .take(count)
             .collect::<Vec<usize>>()
@@ -109,7 +104,7 @@ async fn test_batched() {
 
 #[tokio::test]
 async fn test_stream() {
-    async fn stream(Args(count): Args<usize>) -> impl Stream<Item = usize> {
+    async fn stream(count: usize) -> impl Stream<Item = usize> {
         stream! {
             for i in 0..count {
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -137,7 +132,7 @@ async fn test_stream() {
 
 #[tokio::test]
 async fn test_stream_cancel() {
-    async fn stream(Args(count): Args<usize>) -> impl Stream<Item = usize> {
+    async fn stream(count: usize) -> impl Stream<Item = usize> {
         stream! {
             for i in 0..count {
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -170,7 +165,7 @@ async fn test_stream_cancel() {
 
 #[tokio::test]
 async fn test_stream_failure() {
-    async fn stream_failure(Args(count): Args<usize>) -> impl Stream<Item = Result<usize, String>> {
+    async fn stream_failure(count: usize) -> impl Stream<Item = Result<usize, String>> {
         stream! {
             for i in 0..count {
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;

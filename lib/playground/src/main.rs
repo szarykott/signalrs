@@ -14,7 +14,7 @@ use futures::{select, sink::SinkExt, stream::StreamExt, FutureExt, Stream};
 use log::*;
 use signalrs::{
     connection::ConnectionState,
-    extract::{Args, UploadStream},
+    extract::UploadStream,
     hub::{builder::HubBuilder, Hub},
     negotiate::{NegotiateResponseV0, TransportSpec},
     response::ResponseSink,
@@ -180,11 +180,11 @@ async fn ws_handler(socket: WebSocket, invoker: Arc<Hub>) {
     debug!("client event loop stopped");
 }
 
-async fn add(Args((a, b)): Args<(i32, i32)>) -> i32 {
+async fn add(a: i32, b: i32) -> i32 {
     a + b
 }
 
-pub async fn stream(Args(count): Args<usize>) -> impl Stream<Item = usize> {
+pub async fn stream(count: usize) -> impl Stream<Item = usize> {
     stream! {
         for i in 0..count {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
@@ -202,10 +202,7 @@ pub async fn add_stream(mut input: UploadStream<i32>) -> i32 {
     result.into_iter().sum::<i32>()
 }
 
-pub async fn stream2(
-    Args(count): Args<usize>,
-    _input: UploadStream<i32>,
-) -> impl Stream<Item = usize> {
+pub async fn stream2(count: usize, _input: UploadStream<i32>) -> impl Stream<Item = usize> {
     stream! {
         for i in 0..count {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;

@@ -65,7 +65,6 @@ impl HubBuilder {
 #[cfg(test)]
 mod tests {
     use super::HubBuilder;
-    use crate::extract::Args;
     use async_stream::stream;
     use futures::Stream;
 
@@ -82,7 +81,7 @@ mod tests {
 
     pub async fn noop() {}
 
-    pub async fn identity(Args(a): Args<i32>) -> i32 {
+    pub async fn identity(a: i32) -> i32 {
         a
     }
 
