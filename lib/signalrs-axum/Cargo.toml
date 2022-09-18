@@ -1,0 +1,15 @@
+[package]
+edition = "2021"
+name = "signalrs-axum"
+version = "0.1.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+axum = {version = "0.5", features = ["ws"]}
+flume = {version = "0.10"}
+futures = "0.3"
+log = "0.4"
+signalrs = {path = "../signalrs"}
+tokio = {version = "1", features = ["rt-multi-thread"]}
+tokio-tungstenite = "0.17"
