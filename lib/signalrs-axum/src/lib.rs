@@ -8,10 +8,7 @@ use axum::{
 use futures::{future::FutureExt, select, sink::SinkExt, stream::StreamExt};
 use log::*;
 use signalrs::{
-    connection::ConnectionState,
-    hub::Hub,
-    negotiate::{NegotiateResponseV0, TransportSpec},
-    response::ResponseSink,
+    connection::ConnectionState, hub::Hub, negotiate::NegotiateResponseV0, response::ResponseSink,
 };
 use std::sync::Arc;
 
@@ -28,14 +25,7 @@ pub fn hub_routes(hub: Hub) -> Router<Body> {
 async fn negotiate() -> Json<NegotiateResponseV0> {
     debug!("negotiate endpoint invoked");
 
-    Json(NegotiateResponseV0 {
-        connection_id: "test".into(),
-        negotiate_version: 0,
-        available_transports: vec![TransportSpec {
-            transport: "WebSockets".into(),
-            transfer_formats: vec!["Text".into()],
-        }],
-    })
+    Json(NegotiateResponseV0::supported_spec(uuid::Uuid::new_v4()))
 }
 
 async fn ws_upgrade_handler(

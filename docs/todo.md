@@ -11,7 +11,6 @@ SignalR protocol implementation in Rust
 # Features
 
 1. Broadcast to other clients
-1. integration with axum as separate package
 1. Proper integration with tracing
 1. Documentation
 1. Macros crate for derive macro

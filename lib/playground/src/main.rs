@@ -81,7 +81,6 @@ fn setup_logger() {
 
     SimpleLogger::new()
         .with_colors(true)
-        .with_local_timestamps()
         .with_module_level("mio", LevelFilter::Warn)
         .with_module_level("tokio_tungstenite", LevelFilter::Warn)
         .with_module_level("tungstenite", LevelFilter::Warn)

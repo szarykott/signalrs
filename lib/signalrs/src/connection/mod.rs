@@ -1,5 +1,6 @@
 use serde::de::DeserializeOwned;
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::error::SignalRError;
 
@@ -11,10 +12,21 @@ pub(crate) use self::{
 mod inflight_invocations;
 mod upload_sinks;
 
-#[derive(Default, Clone)] // TODO: Is clone really needed?!
+#[derive(Clone)] // TODO: Is clone really needed?!
 pub struct ConnectionState {
+    pub(crate) connection_id: Uuid,
     pub(crate) inflight_invocations: InflightInvocations,
     pub(crate) upload_sinks: UploadSinks,
+}
+
+impl Default for ConnectionState {
+    fn default() -> Self {
+        Self {
+            connection_id: Uuid::new_v4(),
+            inflight_invocations: Default::default(),
+            upload_sinks: Default::default(),
+        }
+    }
 }
 
 pub enum StreamItemPayload {
