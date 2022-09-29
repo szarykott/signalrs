@@ -95,6 +95,22 @@ pub struct Invocation<A> {
 }
 
 impl<A> Invocation<A> {
+    pub fn new_non_blocking(target: impl Into<String>, arguments: Option<A>) -> Self {
+        Invocation {
+            r#type: MessageType::Invocation,
+            headers: None,
+            invocation_id: None,
+            target: target.into(),
+            arguments: arguments,
+            stream_ids: None,
+        }
+    }
+
+    pub fn with_streams(&mut self, stream_ids: Vec<String>) -> &mut Self {
+        self.stream_ids = Some(stream_ids);
+        self
+    }
+
     pub fn without_id(target: impl Into<String>, arguments: Option<A>) -> Self {
         Self::new(None, target.into(), arguments)
     }
