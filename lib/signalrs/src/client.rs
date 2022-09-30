@@ -167,10 +167,7 @@ where
             invocation.with_streams(stream_ids.clone());
         }
 
-        self.sink
-            .send(serde_json::to_string(&invocation)?)
-            .await
-            .unwrap(); // TODO: Do not unwrap
+        self.sink.send(serde_json::to_string(&invocation)?).await?;
 
         if let Some(streams) = streams {
             let mut futures = FuturesUnordered::new();
