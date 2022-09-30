@@ -1,7 +1,7 @@
-use crate::protocol::{Invocation, StreamItem};
+use crate::protocol::{Completion, Invocation, StreamItem};
 use futures::{
     sink::{Sink, SinkExt},
-    stream::{Stream, StreamExt},
+    stream::{FuturesUnordered, Stream, StreamExt},
 };
 use serde::Serialize;
 use std::fmt::Debug;
@@ -69,8 +69,7 @@ where
 
 impl<S> SignalRClient<S>
 where
-    S: Sink<String> + Unpin,
-    <S as Sink<String>>::Error: Debug,
+    S: Sink<String, Error = SignnalRClientError> + Unpin + Clone,
 {
     pub async fn send(&mut self, target: String) -> Result<(), SignnalRClientError> {
         self.actually_send(target, None, None).await
@@ -113,7 +112,10 @@ where
             InvocationPart::Stream(stream) => {
                 streams.push(
                     Box::new(stream.map(|x| serde_json::to_value(x).map_err(|x| x.into())))
-                        as Box<dyn Stream<Item = Result<serde_json::Value, SignnalRClientError>>>,
+                        as Box<
+                            dyn Stream<Item = Result<serde_json::Value, SignnalRClientError>>
+                                + Unpin,
+                        >,
                 );
             }
         };
@@ -121,9 +123,13 @@ where
         match arg2.into() {
             InvocationPart::Argument(arg) => arguments.push(serde_json::to_value(arg)?),
             InvocationPart::Stream(stream) => {
-                streams.push(Box::new(
-                    stream.map(|x| serde_json::to_value(x).map_err(|x| x.into())),
-                ));
+                streams.push(
+                    Box::new(stream.map(|x| serde_json::to_value(x).map_err(|x| x.into())))
+                        as Box<
+                            dyn Stream<Item = Result<serde_json::Value, SignnalRClientError>>
+                                + Unpin,
+                        >,
+                );
             }
         };
 
@@ -147,7 +153,7 @@ where
         target: String,
         arguments: Option<Vec<serde_json::Value>>,
         streams: Option<
-            Vec<Box<dyn Stream<Item = Result<serde_json::Value, SignnalRClientError>>>>,
+            Vec<Box<dyn Stream<Item = Result<serde_json::Value, SignnalRClientError>> + Unpin>>,
         >,
     ) -> Result<(), SignnalRClientError> {
         let mut invocation = Invocation::new_non_blocking(target, arguments);
@@ -167,15 +173,48 @@ where
             .unwrap(); // TODO: Do not unwrap
 
         if let Some(streams) = streams {
+            let mut futures = FuturesUnordered::new();
+
             for (id, stream) in stream_ids.into_iter().zip(streams) {
-                let stream = stream.map(|x| x);
+                let sink = self.sink.clone();
+                let future = async move {
+                    match Self::stream_it(sink, id.as_str(), stream).await {
+                        Ok(()) => Ok(()),
+                        Err(error) => Err((id, error)),
+                    }
+                };
+
+                futures.push(future);
+            }
+
+            while let Some(result) = futures.next().await {
+                if let Err((id, error)) = result {
+                    let completion = Completion::<()>::error(id, error.to_string());
+                    self.sink.send(serde_json::to_string(&completion)?).await?;
+                    return Err(error);
+                }
             }
         }
 
-        // stream all streams
-        // break the method in case error occurs in any stream
         // send some error message in stream item then?
 
         todo!()
+    }
+
+    async fn stream_it(
+        mut sink: S,
+        invocation_id: &str,
+        mut stream: Box<dyn Stream<Item = Result<serde_json::Value, SignnalRClientError>> + Unpin>,
+    ) -> Result<(), SignnalRClientError> {
+        loop {
+            match stream.next().await {
+                Some(Ok(value)) => {
+                    let stream_item = StreamItem::new(invocation_id, value);
+                    sink.send(serde_json::to_string(&stream_item)?).await?;
+                }
+                Some(Err(error)) => return Err(error),
+                None => return Ok(()),
+            }
+        }
     }
 }
