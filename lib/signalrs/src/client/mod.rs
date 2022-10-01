@@ -33,3 +33,5 @@ where
         receiver,
     }
 }
+
+impl<Sink, Stream> SignalRClient<Sink, Stream, String> {}
