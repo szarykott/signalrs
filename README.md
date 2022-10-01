@@ -42,3 +42,4 @@ Internals of the protocol were implemented based on following:
     - [HubProtcol](https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/HubProtocol.md)
     - [TransportProtocol](https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/TransportProtocols.md)
 - Reverse engineering of .NET implementation
+- Talk [SignalR Deep Dive: Building Servers - David Fowler & Damian Edwards](https://youtu.be/iL9nLAjCPtM)
