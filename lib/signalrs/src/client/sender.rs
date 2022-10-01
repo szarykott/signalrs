@@ -4,12 +4,12 @@ use futures::{
     stream::{FuturesUnordered, Stream, StreamExt},
 };
 use serde::Serialize;
-use std::fmt::Debug;
-use thiserror::Error;
 use uuid::Uuid;
 
-pub struct SignalRClient<S> {
-    sink: S,
+use super::SignalRClientError;
+
+pub struct SignalRClientSender<S> {
+    pub(super) sink: S,
 }
 
 pub enum InvocationPart<T> {
@@ -36,15 +36,6 @@ impl<T> Stream for InvocationStream<T> {
     }
 }
 
-#[derive(Error, Debug)]
-pub enum SignnalRClientError {
-    #[error("Json error")]
-    JsonError {
-        #[from]
-        source: serde_json::Error,
-    },
-}
-
 pub trait IntoInvocationPart<T> {
     fn into(self) -> InvocationPart<T>;
 }
@@ -67,15 +58,15 @@ where
     }
 }
 
-impl<S> SignalRClient<S>
+impl<S> SignalRClientSender<S>
 where
-    S: Sink<String, Error = SignnalRClientError> + Unpin + Clone,
+    S: Sink<String, Error = SignalRClientError> + Unpin + Clone,
 {
-    pub async fn send(&mut self, target: String) -> Result<(), SignnalRClientError> {
+    pub async fn send(&mut self, target: String) -> Result<(), SignalRClientError> {
         self.actually_send(target, None, None).await
     }
 
-    pub async fn send1<T>(&mut self, target: String, arg1: T) -> Result<(), SignnalRClientError>
+    pub async fn send1<T>(&mut self, target: String, arg1: T) -> Result<(), SignalRClientError>
     where
         T: IntoInvocationPart<T> + Serialize + 'static,
     {
@@ -99,7 +90,7 @@ where
         target: String,
         arg1: T1,
         arg2: T2,
-    ) -> Result<(), SignnalRClientError>
+    ) -> Result<(), SignalRClientError>
     where
         T1: IntoInvocationPart<T1> + Serialize + 'static,
         T2: IntoInvocationPart<T2> + Serialize + 'static,
@@ -113,7 +104,7 @@ where
                 streams.push(
                     Box::new(stream.map(|x| serde_json::to_value(x).map_err(|x| x.into())))
                         as Box<
-                            dyn Stream<Item = Result<serde_json::Value, SignnalRClientError>>
+                            dyn Stream<Item = Result<serde_json::Value, SignalRClientError>>
                                 + Unpin,
                         >,
                 );
@@ -126,7 +117,7 @@ where
                 streams.push(
                     Box::new(stream.map(|x| serde_json::to_value(x).map_err(|x| x.into())))
                         as Box<
-                            dyn Stream<Item = Result<serde_json::Value, SignnalRClientError>>
+                            dyn Stream<Item = Result<serde_json::Value, SignalRClientError>>
                                 + Unpin,
                         >,
                 );
@@ -153,9 +144,9 @@ where
         target: String,
         arguments: Option<Vec<serde_json::Value>>,
         streams: Option<
-            Vec<Box<dyn Stream<Item = Result<serde_json::Value, SignnalRClientError>> + Unpin>>,
+            Vec<Box<dyn Stream<Item = Result<serde_json::Value, SignalRClientError>> + Unpin>>,
         >,
-    ) -> Result<(), SignnalRClientError> {
+    ) -> Result<(), SignalRClientError> {
         let mut invocation = Invocation::new_non_blocking(target, arguments);
 
         let mut stream_ids = Vec::new();
@@ -188,21 +179,19 @@ where
                 if let Err((id, error)) = result {
                     let completion = Completion::<()>::error(id, error.to_string());
                     self.sink.send(serde_json::to_string(&completion)?).await?;
-                    return Err(error);
+                    return Err(error); // TODO: return here? client might still be interested in the rest of streams
                 }
             }
         }
 
-        // send some error message in stream item then?
-
-        todo!()
+        Ok(())
     }
 
     async fn stream_it(
         mut sink: S,
         invocation_id: &str,
-        mut stream: Box<dyn Stream<Item = Result<serde_json::Value, SignnalRClientError>> + Unpin>,
-    ) -> Result<(), SignnalRClientError> {
+        mut stream: Box<dyn Stream<Item = Result<serde_json::Value, SignalRClientError>> + Unpin>,
+    ) -> Result<(), SignalRClientError> {
         loop {
             match stream.next().await {
                 Some(Ok(value)) => {

@@ -228,6 +228,22 @@ impl<R> Completion<R> {
             error,
         }
     }
+
+    pub fn is_error(&self) -> bool {
+        self.error.is_some()
+    }
+
+    pub fn is_ok(&self) -> bool {
+        self.result.is_some()
+    }
+
+    pub fn get_error_owned(self) -> Option<String> {
+        self.error
+    }
+
+    pub fn get_result_owned(self) -> Option<R> {
+        self.result
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
