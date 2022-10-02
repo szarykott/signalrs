@@ -31,9 +31,7 @@ where
         rx: Receiver<String>,
     ) -> Result<Result<T, String>, SignalRClientError> {
         let result = Self::receive_completion::<T>(rx).await;
-
         self.remove_invocation(&invocation_id.to_string());
-
         result
     }
 
@@ -50,6 +48,8 @@ where
         if completion.is_error() {
             return Ok(Err(completion.unwrap_error()));
         }
+
+        // FIXME: probably this is allowed if client invokes blocking method with ()/void return type
 
         Err(SignalRClientError::ProtocolError {
             message: "Callee completed invocation without success or error indicator".into(),
