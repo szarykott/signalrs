@@ -77,31 +77,7 @@ where
             .await
     }
 
-    pub async fn send_text1<T>(
-        &mut self,
-        target: String,
-        invocation_id: Option<String>,
-        arg1: T,
-    ) -> Result<(), SignalRClientError>
-    where
-        T: IntoInvocationPart<T> + Serialize + 'static,
-    {
-        let t1: InvocationPart<T> = arg1.into();
-
-        match t1 {
-            InvocationPart::Argument(a1) => {
-                let a1 = serde_json::to_value(a1)?;
-                self.actually_send_text(target, invocation_id, Some(vec![a1]), None)
-                    .await
-            }
-            InvocationPart::Stream(s1) => {
-                let s1 = s1.map(|x| serde_json::to_value(x).map_err(|x| x.into()));
-                self.actually_send_text(target, invocation_id, None, Some(vec![Box::new(s1)]))
-                    .await
-            }
-        }
-    }
-
+    send_text!(send_text1, T1);
     send_text!(send_text2, T1, T2);
     send_text!(send_text3, T1, T2, T3);
     send_text!(send_text4, T1, T2, T3, T4);
