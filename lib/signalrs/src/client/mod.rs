@@ -72,7 +72,7 @@ where
     {
         let invocation_id = Uuid::new_v4().to_string();
 
-        let rx = self.receiver.setup_receive(invocation_id.clone());
+        let rx = self.receiver.setup_receive_once(invocation_id.clone());
 
         let result = self
             .sender
@@ -91,5 +91,33 @@ where
         });
 
         result
+    }
+
+    pub async fn invoke_stream2<T1, T2, R>(
+        &mut self,
+        target: impl ToString,
+        arg1: T1,
+        arg2: T2,
+    ) -> Result<impl Stream<Item = Result<R, SignalRClientError>>, SignalRClientError>
+    where
+        T1: IntoInvocationPart<T1> + Serialize + 'static,
+        T2: IntoInvocationPart<T2> + Serialize + 'static,
+        R: DeserializeOwned + Send + 'static,
+    {
+        let invocation_id = Uuid::new_v4().to_string();
+
+        let rx = self.receiver.setup_receive_stream(invocation_id.clone());
+
+        let result = self
+            .sender
+            .send2(target.to_string(), Some(invocation_id.clone()), arg1, arg2)
+            .await;
+
+        if let e @ Err(_) = result {
+            self.receiver.remove_invocation(&invocation_id);
+            e?;
+        }
+
+        self.receiver.receive_stream::<R>(invocation_id, rx).await
     }
 }

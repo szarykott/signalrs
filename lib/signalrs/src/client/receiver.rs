@@ -8,7 +8,7 @@ use std::{
 };
 
 use super::{ChannelSendError, SignalRClientError};
-use crate::protocol::Completion;
+use crate::protocol::{Completion, MessageType, StreamItem};
 
 pub struct SignalRClientReceiver<S, I> {
     pub(super) incoming_messages: Option<S>,
@@ -19,7 +19,7 @@ impl<S> SignalRClientReceiver<S, String>
 where
     S: Stream<Item = String> + Send + Unpin + 'static,
 {
-    pub fn setup_receive(&self, invocation_id: impl ToString) -> Receiver<String> {
+    pub fn setup_receive_once(&self, invocation_id: impl ToString) -> Receiver<String> {
         let (tx, rx) = flume::bounded::<String>(1);
         self.insert_invocation(invocation_id.to_string(), tx);
         rx
@@ -56,11 +56,80 @@ where
         })
     }
 
-    pub fn receive_stream<T>(
+    pub fn setup_receive_stream(&self, invocation_id: impl ToString) -> Receiver<String> {
+        let (tx, rx) = flume::bounded::<String>(100);
+        self.insert_invocation(invocation_id.to_string(), tx);
+        rx
+    }
+
+    pub async fn receive_stream<T: DeserializeOwned + Send + 'static>(
         &self,
         invocation_id: impl Into<String>,
+        receiver: Receiver<String>,
     ) -> Result<ReceiveStream<Result<T, SignalRClientError>>, SignalRClientError> {
-        todo!()
+        let (mut tx, rx) = flume::bounded::<Result<T, SignalRClientError>>(100);
+
+        let future = async move {
+            let mut input_stream = receiver.into_stream();
+            while let Some(next) = input_stream.next().await {
+                let message_type = match serde_json::from_str(&next) {
+                    Ok(MessageTypeWrapper { message_type }) => message_type,
+                    Err(e) => {
+                        error!("{}", e); // FIXME: Forward
+                        break;
+                    }
+                };
+                match message_type {
+                    MessageType::StreamItem => {
+                        let stream_item: StreamItem<T> = match serde_json::from_str(&next) {
+                            Ok(item) => item,
+                            Err(e) => {
+                                error!("{}", e); // FIXME: Forward
+                                break;
+                            }
+                        };
+
+                        if let Err(e) = tx.send_async(Ok(stream_item.item)).await {
+                            error!("{}", e); // FIXME: Forward
+                            break;
+                        }
+                    }
+                    MessageType::Completion => {
+                        let completion: Completion<T> = match serde_json::from_str(&next) {
+                            Ok(item) => item,
+                            Err(e) => {
+                                error!("{}", e); // FIXME: Forward
+                                break;
+                            }
+                        };
+
+                        if let Err(e) = tx.send_async(Ok(completion.)).await {
+                            error!("{}", e); // FIXME: Forward
+                            break;
+                        }
+                    }
+                    message_type => {
+                        send_unsupported_error(&mut tx, message_type).await;
+                        break;
+                    }
+                }
+            }
+        };
+
+        tokio::spawn(future);
+
+        return Ok(ReceiveStream(Box::new(rx.into_stream())));
+
+        async fn send_unsupported_error<T: Send + 'static>(
+            tx: &mut Sender<Result<T, SignalRClientError>>,
+            message_type: MessageType,
+        ) {
+            tx.send_async(Err(SignalRClientError::ProtocolError {
+                message: format!("Received illegal {}", message_type),
+            }))
+            .await
+            .unwrap_or_else(|e| error!("{}", e));
+        }
     }
 
     pub(super) fn start_receiver_loop(&mut self) {
@@ -74,8 +143,8 @@ where
         let future = async move {
             while let Some(next) = incoming.next().await {
                 match serde_json::from_str::<MaybeInvocationId>(&next) {
-                    Ok(maybe_id) => {
-                        if let Some(invocation_id) = maybe_id.invocation_id {
+                    Ok(MaybeInvocationId { invocation_id }) => {
+                        if let Some(invocation_id) = invocation_id {
                             if let Err(error) =
                                 Self::route_text(&invocation_id, next, invocations.clone()).await
                             {
@@ -164,10 +233,27 @@ where
     }
 }
 
-pub struct ReceiveStream<T>(Box<dyn Stream<Item = T> + Unpin>);
-
 #[derive(Deserialize)]
 struct MaybeInvocationId {
     #[serde(rename = "invocationId")]
     pub invocation_id: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct MessageTypeWrapper {
+    #[serde(rename = "type")]
+    pub message_type: MessageType,
+}
+
+pub struct ReceiveStream<T>(Box<dyn Stream<Item = T> + Unpin>);
+
+impl<T> Stream for ReceiveStream<T> {
+    type Item = T;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.0.poll_next_unpin(cx)
+    }
 }

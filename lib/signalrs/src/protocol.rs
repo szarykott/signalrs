@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::{collections::HashMap, convert::From};
+use std::{collections::HashMap, convert::From, fmt::Display};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -282,6 +282,25 @@ pub enum MessageType {
     Ping = 6,
     Close = 7,
     Other = 8,
+}
+
+impl Display for MessageType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MessageType::Invocation => write!(f, "{}", stringify!(MessageType::Invocation)),
+            MessageType::StreamItem => write!(f, "{}", stringify!(MessageType::StreamItem)),
+            MessageType::Completion => write!(f, "{}", stringify!(MessageType::Completion)),
+            MessageType::StreamInvocation => {
+                write!(f, "{}", stringify!(MessageType::StreamInvocation))
+            }
+            MessageType::CancelInvocation => {
+                write!(f, "{}", stringify!(MessageType::CancelInvocation))
+            }
+            MessageType::Ping => write!(f, "{}", stringify!(MessageType::Ping)),
+            MessageType::Close => write!(f, "{}", stringify!(MessageType::Close)),
+            MessageType::Other => write!(f, "{}", stringify!(MessageType::Other)),
+        }
+    }
 }
 
 impl From<u8> for MessageType {
