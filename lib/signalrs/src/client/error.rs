@@ -19,6 +19,8 @@ pub enum SignalRClientError {
     },
     #[error("Protocol error occured")]
     ProtocolError { message: String },
+    #[error("Invocation finished with error")]
+    InvocationError { message: String },
 }
 
 #[derive(Error, Debug)]

@@ -4,6 +4,7 @@ use log::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    hash::Hash,
     sync::{Arc, Mutex},
 };
 
@@ -43,12 +44,12 @@ where
         let text = rx.recv_async().await?;
         let completion: Completion<T> = serde_json::from_str(&text)?;
 
-        if completion.is_ok() {
-            return Ok(Ok(completion.get_result_owned().unwrap()));
+        if completion.is_result() {
+            return Ok(Ok(completion.unwrap_result()));
         }
 
         if completion.is_error() {
-            return Ok(Err(completion.get_error_owned().unwrap()));
+            return Ok(Err(completion.unwrap_error()));
         }
 
         Err(SignalRClientError::ProtocolError {
@@ -66,7 +67,7 @@ where
         &self,
         invocation_id: impl Into<String>,
         receiver: Receiver<String>,
-    ) -> Result<ReceiveStream<Result<T, SignalRClientError>>, SignalRClientError> {
+    ) -> Result<ReceiveStream<Result<T, SignalRClientError>, String>, SignalRClientError> {
         let (mut tx, rx) = flume::bounded::<Result<T, SignalRClientError>>(100);
 
         let future = async move {
@@ -95,7 +96,7 @@ where
                         }
                     }
                     MessageType::Completion => {
-                        let completion: Completion<T> = match serde_json::from_str(&next) {
+                        let completion: Completion<()> = match serde_json::from_str(&next) {
                             Ok(item) => item,
                             Err(e) => {
                                 error!("{}", e); // FIXME: Forward
@@ -103,10 +104,21 @@ where
                             }
                         };
 
-                        if let Err(e) = tx.send_async(Ok(completion.)).await {
-                            error!("{}", e); // FIXME: Forward
+                        if completion.is_error() {
+                            let error = completion.unwrap_error();
+                            if let Err(e) = tx
+                                .send_async(Err(SignalRClientError::InvocationError {
+                                    message: error,
+                                }))
+                                .await
+                            {
+                                error!("{}", e); // FIXME: Forward
+                            }
+
                             break;
                         }
+
+                        break;
                     }
                     message_type => {
                         send_unsupported_error(&mut tx, message_type).await;
@@ -118,7 +130,11 @@ where
 
         tokio::spawn(future);
 
-        return Ok(ReceiveStream(Box::new(rx.into_stream())));
+        return Ok(ReceiveStream {
+            inner: Box::new(rx.into_stream()),
+            invocation_id: invocation_id.into(),
+            invocations: self.invocations.clone(),
+        });
 
         async fn send_unsupported_error<T: Send + 'static>(
             tx: &mut Sender<Result<T, SignalRClientError>>,
@@ -148,7 +164,7 @@ where
                             if let Err(error) =
                                 Self::route_text(&invocation_id, next, invocations.clone()).await
                             {
-                                unimplemented!()
+                                error!("{}", error); // FIXME: Forward
                             }
                             continue;
                         }
@@ -245,15 +261,26 @@ pub struct MessageTypeWrapper {
     pub message_type: MessageType,
 }
 
-pub struct ReceiveStream<T>(Box<dyn Stream<Item = T> + Unpin>);
+pub struct ReceiveStream<T, I> {
+    inner: Box<dyn Stream<Item = T> + Unpin>,
+    invocations: Arc<Mutex<HashMap<String, Sender<I>>>>,
+    invocation_id: String,
+}
 
-impl<T> Stream for ReceiveStream<T> {
+impl<T, I> Stream for ReceiveStream<T, I> {
     type Item = T;
 
     fn poll_next(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        self.0.poll_next_unpin(cx)
+        self.inner.poll_next_unpin(cx)
+    }
+}
+
+impl<T, I> Drop for ReceiveStream<T, I> {
+    fn drop(&mut self) {
+        let mut invocations = self.invocations.lock().unwrap();
+        invocations.remove(&self.invocation_id);
     }
 }

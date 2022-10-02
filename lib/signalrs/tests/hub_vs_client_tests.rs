@@ -2,9 +2,10 @@
 use std::sync::{Arc, Mutex};
 
 use crate::common::SerializeExt;
+use async_stream::stream;
 use common::{ClientOutputWrapper, TestReceiver};
 use flume::{r#async::RecvStream, Receiver, Sender};
-use futures::{SinkExt, StreamExt};
+use futures::{SinkExt, Stream, StreamExt};
 use signalrs::{
     client::{self, ChannelSendError, SignalRClient, SignalRClientError},
     connection::ConnectionState,
@@ -52,6 +53,32 @@ async fn test_add() {
     let result: i32 = client.invoke2(stringify!(add), 1i32, 2i32).await.unwrap();
 
     assert_eq!(3, result);
+}
+
+#[tokio::test]
+async fn test_stream() {
+    async fn stream(count: usize) -> impl Stream<Item = usize> {
+        stream! {
+            for i in 0..count {
+                yield i;
+            }
+        }
+    }
+
+    let mut client =
+        get_wired_client(HubBuilder::new().streaming_method(stringify!(stream), stream));
+
+    let mut result = client
+        .invoke_stream1::<_, usize>(stringify!(stream), 5usize)
+        .await
+        .unwrap();
+
+    assert_eq!(0usize, result.next().await.unwrap().unwrap());
+    assert_eq!(1usize, result.next().await.unwrap().unwrap());
+    assert_eq!(2usize, result.next().await.unwrap().unwrap());
+    assert_eq!(3usize, result.next().await.unwrap().unwrap());
+    assert_eq!(4usize, result.next().await.unwrap().unwrap());
+    assert_eq!(true, result.next().await.is_none());
 }
 
 // ============== HELPERS ======================== //

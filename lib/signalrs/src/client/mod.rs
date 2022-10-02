@@ -93,15 +93,13 @@ where
         result
     }
 
-    pub async fn invoke_stream2<T1, T2, R>(
+    pub async fn invoke_stream1<T1, R>(
         &mut self,
         target: impl ToString,
         arg1: T1,
-        arg2: T2,
     ) -> Result<impl Stream<Item = Result<R, SignalRClientError>>, SignalRClientError>
     where
         T1: IntoInvocationPart<T1> + Serialize + 'static,
-        T2: IntoInvocationPart<T2> + Serialize + 'static,
         R: DeserializeOwned + Send + 'static,
     {
         let invocation_id = Uuid::new_v4().to_string();
@@ -110,7 +108,7 @@ where
 
         let result = self
             .sender
-            .send2(target.to_string(), Some(invocation_id.clone()), arg1, arg2)
+            .send1(target.to_string(), Some(invocation_id.clone()), arg1)
             .await;
 
         if let e @ Err(_) = result {

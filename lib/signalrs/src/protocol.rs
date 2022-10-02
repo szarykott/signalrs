@@ -238,16 +238,16 @@ impl<R> Completion<R> {
         self.error.is_some()
     }
 
-    pub fn is_ok(&self) -> bool {
+    pub fn is_result(&self) -> bool {
         self.result.is_some()
     }
 
-    pub fn get_error_owned(self) -> Option<String> {
-        self.error
+    pub fn unwrap_error(self) -> String {
+        self.error.unwrap()
     }
 
-    pub fn get_result_owned(self) -> Option<R> {
-        self.result
+    pub fn unwrap_result(self) -> R {
+        self.result.unwrap()
     }
 }
 
