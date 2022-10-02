@@ -12,65 +12,72 @@ pub struct SignalRClientSender<S> {
     pub(super) sink: S,
 }
 
-pub enum InvocationPart<T> {
-    Argument(T),
-    Stream(InvocationStream<T>),
-}
+macro_rules! send_text {
+    ($name:ident, $($ty:ident),+) => {
+        #[allow(non_snake_case)]
+        pub async fn $name<$($ty,)+>(
+            &mut self,
+            target: String,
+            invocation_id: Option<String>,
+            $(
+                $ty: $ty,
+            )+
+        ) -> Result<(), SignalRClientError>
+        where
+        $(
+            $ty: IntoInvocationPart<$ty> + Serialize + 'static,
+        )+
+        {
+            let mut arguments = Vec::new();
+            let mut streams = Vec::new();
 
-pub struct InvocationStream<T>(Box<dyn Stream<Item = T> + Unpin>);
+            $(
+                match $ty.into() {
+                    InvocationPart::Argument(arg) => arguments.push(serde_json::to_value(arg)?),
+                    InvocationPart::Stream(stream) => {
+                        streams.push(
+                            Box::new(stream.map(|x| serde_json::to_value(x).map_err(|x| x.into())))
+                                as Box<
+                                    dyn Stream<Item = Result<serde_json::Value, SignalRClientError>>
+                                        + Unpin,
+                                >,
+                        );
+                    }
+                };
+            )+
 
-impl<T> InvocationStream<T> {
-    pub fn new(inner: impl Stream<Item = T> + Unpin + 'static) -> Self {
-        InvocationStream(Box::new(inner))
-    }
-}
+            let arguments = if arguments.is_empty() {
+                None
+            } else {
+                Some(arguments)
+            };
 
-impl<T> Stream for InvocationStream<T> {
-    type Item = T;
+            let streams = if streams.is_empty() {
+                None
+            } else {
+                Some(streams)
+            };
 
-    fn poll_next(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
-        self.0.poll_next_unpin(cx)
-    }
-}
-
-pub trait IntoInvocationPart<T> {
-    fn into(self) -> InvocationPart<T>;
-}
-
-impl<T> IntoInvocationPart<T> for T
-where
-    T: Serialize,
-{
-    fn into(self) -> InvocationPart<T> {
-        InvocationPart::Argument(self)
-    }
-}
-
-impl<T> IntoInvocationPart<T> for InvocationStream<T>
-where
-    T: Serialize,
-{
-    fn into(self) -> InvocationPart<T> {
-        InvocationPart::Stream(self)
-    }
+            self.actually_send_text(target, invocation_id, arguments, streams)
+                .await
+        }
+    };
 }
 
 impl<S> SignalRClientSender<S>
 where
     S: Sink<String, Error = SignalRClientError> + Unpin + Clone,
 {
-    pub async fn send(
+    pub async fn send_text0(
         &mut self,
         target: String,
         invocation_id: Option<String>,
     ) -> Result<(), SignalRClientError> {
-        self.actually_send(target, invocation_id, None, None).await
+        self.actually_send_text(target, invocation_id, None, None)
+            .await
     }
 
-    pub async fn send1<T>(
+    pub async fn send_text1<T>(
         &mut self,
         target: String,
         invocation_id: Option<String>,
@@ -84,74 +91,60 @@ where
         match t1 {
             InvocationPart::Argument(a1) => {
                 let a1 = serde_json::to_value(a1)?;
-                self.actually_send(target, invocation_id, Some(vec![a1]), None)
+                self.actually_send_text(target, invocation_id, Some(vec![a1]), None)
                     .await
             }
             InvocationPart::Stream(s1) => {
                 let s1 = s1.map(|x| serde_json::to_value(x).map_err(|x| x.into()));
-                self.actually_send(target, invocation_id, None, Some(vec![Box::new(s1)]))
+                self.actually_send_text(target, invocation_id, None, Some(vec![Box::new(s1)]))
                     .await
             }
         }
     }
 
-    pub async fn send2<T1, T2>(
-        &mut self,
-        target: String,
-        invocation_id: Option<String>,
-        arg1: T1,
-        arg2: T2,
-    ) -> Result<(), SignalRClientError>
-    where
-        T1: IntoInvocationPart<T1> + Serialize + 'static,
-        T2: IntoInvocationPart<T2> + Serialize + 'static,
-    {
-        let mut arguments = Vec::new();
-        let mut streams = Vec::new();
+    send_text!(send_text2, T1, T2);
+    send_text!(send_text3, T1, T2, T3);
+    send_text!(send_text4, T1, T2, T3, T4);
+    send_text!(send_text5, T1, T2, T3, T4, T5);
+    send_text!(send_text6, T1, T2, T3, T4, T5, T6);
+    send_text!(send_text7, T1, T2, T3, T4, T5, T6, T7);
+    send_text!(send_text8, T1, T2, T3, T4, T5, T6, T7, T8);
+    send_text!(send_text9, T1, T2, T3, T4, T5, T6, T7, T8, T9);
+    send_text!(send_text10, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
+    send_text!(send_text11, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
+    send_text!(
+        send_text12,
+        T1,
+        T2,
+        T3,
+        T4,
+        T5,
+        T6,
+        T7,
+        T8,
+        T9,
+        T10,
+        T11,
+        T12
+    );
+    send_text!(
+        send_text13,
+        T1,
+        T2,
+        T3,
+        T4,
+        T5,
+        T6,
+        T7,
+        T8,
+        T9,
+        T10,
+        T11,
+        T12,
+        T13
+    );
 
-        match arg1.into() {
-            InvocationPart::Argument(arg) => arguments.push(serde_json::to_value(arg)?),
-            InvocationPart::Stream(stream) => {
-                streams.push(
-                    Box::new(stream.map(|x| serde_json::to_value(x).map_err(|x| x.into())))
-                        as Box<
-                            dyn Stream<Item = Result<serde_json::Value, SignalRClientError>>
-                                + Unpin,
-                        >,
-                );
-            }
-        };
-
-        match arg2.into() {
-            InvocationPart::Argument(arg) => arguments.push(serde_json::to_value(arg)?),
-            InvocationPart::Stream(stream) => {
-                streams.push(
-                    Box::new(stream.map(|x| serde_json::to_value(x).map_err(|x| x.into())))
-                        as Box<
-                            dyn Stream<Item = Result<serde_json::Value, SignalRClientError>>
-                                + Unpin,
-                        >,
-                );
-            }
-        };
-
-        let arguments = if arguments.is_empty() {
-            None
-        } else {
-            Some(arguments)
-        };
-
-        let streams = if streams.is_empty() {
-            None
-        } else {
-            Some(streams)
-        };
-
-        self.actually_send(target, invocation_id, arguments, streams)
-            .await
-    }
-
-    async fn actually_send(
+    async fn actually_send_text(
         &mut self,
         target: String,
         invocation_id: Option<String>,
@@ -161,6 +154,7 @@ where
         >,
     ) -> Result<(), SignalRClientError> {
         let mut invocation = Invocation::new_non_blocking(target, arguments);
+
         if let Some(id) = invocation_id {
             invocation.add_invocation_id(id);
         }
@@ -220,3 +214,51 @@ where
         }
     }
 }
+
+pub enum InvocationPart<T> {
+    Argument(T),
+    Stream(InvocationStream<T>),
+}
+
+pub struct InvocationStream<T>(Box<dyn Stream<Item = T> + Unpin>);
+
+impl<T> InvocationStream<T> {
+    pub fn new(inner: impl Stream<Item = T> + Unpin + 'static) -> Self {
+        InvocationStream(Box::new(inner))
+    }
+}
+
+impl<T> Stream for InvocationStream<T> {
+    type Item = T;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.0.poll_next_unpin(cx)
+    }
+}
+
+pub trait IntoInvocationPart<T> {
+    fn into(self) -> InvocationPart<T>;
+}
+
+impl<T> IntoInvocationPart<T> for T
+where
+    T: Serialize,
+{
+    fn into(self) -> InvocationPart<T> {
+        InvocationPart::Argument(self)
+    }
+}
+
+impl<T> IntoInvocationPart<T> for InvocationStream<T>
+where
+    T: Serialize,
+{
+    fn into(self) -> InvocationPart<T> {
+        InvocationPart::Stream(self)
+    }
+}
+
+// ($($ty:ident),+)

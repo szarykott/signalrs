@@ -55,7 +55,7 @@ where
         T2: IntoInvocationPart<T2> + Serialize + 'static,
     {
         self.sender
-            .send2(target.to_string(), None, arg1, arg2)
+            .send_text2(target.to_string(), None, arg1, arg2)
             .await
     }
 
@@ -76,7 +76,7 @@ where
 
         let result = self
             .sender
-            .send2(target.to_string(), Some(invocation_id.clone()), arg1, arg2)
+            .send_text2(target.to_string(), Some(invocation_id.clone()), arg1, arg2)
             .await;
 
         if let e @ Err(_) = result {
@@ -108,7 +108,7 @@ where
 
         let result = self
             .sender
-            .send1(target.to_string(), Some(invocation_id.clone()), arg1)
+            .send_text1(target.to_string(), Some(invocation_id.clone()), arg1)
             .await;
 
         if let e @ Err(_) = result {
