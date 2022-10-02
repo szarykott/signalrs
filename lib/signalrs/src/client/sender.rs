@@ -62,11 +62,20 @@ impl<S> SignalRClientSender<S>
 where
     S: Sink<String, Error = SignalRClientError> + Unpin + Clone,
 {
-    pub async fn send(&mut self, target: String) -> Result<(), SignalRClientError> {
-        self.actually_send(target, None, None).await
+    pub async fn send(
+        &mut self,
+        target: String,
+        invocation_id: Option<String>,
+    ) -> Result<(), SignalRClientError> {
+        self.actually_send(target, invocation_id, None, None).await
     }
 
-    pub async fn send1<T>(&mut self, target: String, arg1: T) -> Result<(), SignalRClientError>
+    pub async fn send1<T>(
+        &mut self,
+        target: String,
+        invocation_id: Option<String>,
+        arg1: T,
+    ) -> Result<(), SignalRClientError>
     where
         T: IntoInvocationPart<T> + Serialize + 'static,
     {
@@ -75,11 +84,12 @@ where
         match t1 {
             InvocationPart::Argument(a1) => {
                 let a1 = serde_json::to_value(a1)?;
-                self.actually_send(target, Some(vec![a1]), None).await
+                self.actually_send(target, invocation_id, Some(vec![a1]), None)
+                    .await
             }
             InvocationPart::Stream(s1) => {
                 let s1 = s1.map(|x| serde_json::to_value(x).map_err(|x| x.into()));
-                self.actually_send(target, None, Some(vec![Box::new(s1)]))
+                self.actually_send(target, invocation_id, None, Some(vec![Box::new(s1)]))
                     .await
             }
         }
@@ -88,6 +98,7 @@ where
     pub async fn send2<T1, T2>(
         &mut self,
         target: String,
+        invocation_id: Option<String>,
         arg1: T1,
         arg2: T2,
     ) -> Result<(), SignalRClientError>
@@ -136,18 +147,23 @@ where
             Some(streams)
         };
 
-        self.actually_send(target, arguments, streams).await
+        self.actually_send(target, invocation_id, arguments, streams)
+            .await
     }
 
     async fn actually_send(
         &mut self,
         target: String,
+        invocation_id: Option<String>,
         arguments: Option<Vec<serde_json::Value>>,
         streams: Option<
             Vec<Box<dyn Stream<Item = Result<serde_json::Value, SignalRClientError>> + Unpin>>,
         >,
     ) -> Result<(), SignalRClientError> {
         let mut invocation = Invocation::new_non_blocking(target, arguments);
+        if let Some(id) = invocation_id {
+            invocation.add_invocation_id(id);
+        }
 
         let mut stream_ids = Vec::new();
 

@@ -19,13 +19,27 @@ impl<S> SignalRClientReceiver<S, String>
 where
     S: Stream<Item = String> + Send + Unpin + 'static,
 {
+    pub fn setup_receive(&self, invocation_id: impl ToString) -> Receiver<String> {
+        let (tx, rx) = flume::bounded::<String>(1);
+        self.insert_invocation(invocation_id.to_string(), tx);
+        rx
+    }
+
     pub async fn receive_once<T: DeserializeOwned>(
         &self,
-        invocation_id: impl Into<String>,
+        invocation_id: impl ToString,
+        rx: Receiver<String>,
     ) -> Result<Result<T, String>, SignalRClientError> {
-        let (tx, rx) = flume::bounded::<String>(1);
-        self.insert_invocation(invocation_id.into(), tx);
+        let result = Self::receive_completion::<T>(rx).await;
 
+        self.remove_invocation(&invocation_id.to_string());
+
+        result
+    }
+
+    async fn receive_completion<T: DeserializeOwned>(
+        rx: Receiver<String>,
+    ) -> Result<Result<T, String>, SignalRClientError> {
         let text = rx.recv_async().await?;
         let completion: Completion<T> = serde_json::from_str(&text)?;
 
@@ -142,6 +156,11 @@ where
     fn insert_invocation(&self, id: String, sender: Sender<String>) {
         let mut invocations = self.invocations.lock().unwrap();
         (*invocations).insert(id, sender);
+    }
+
+    pub fn remove_invocation(&self, id: &String) {
+        let mut invocations = self.invocations.lock().unwrap();
+        (*invocations).remove(id);
     }
 }
 

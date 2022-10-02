@@ -106,6 +106,11 @@ impl<A> Invocation<A> {
         }
     }
 
+    pub fn add_invocation_id(&mut self, invocation_id: impl ToString) -> &mut Self {
+        self.invocation_id = Some(invocation_id.to_string());
+        self
+    }
+
     pub fn with_streams(&mut self, stream_ids: Vec<String>) -> &mut Self {
         self.stream_ids = Some(stream_ids);
         self

@@ -1,4 +1,6 @@
 #![allow(unused_imports)]
+use std::sync::{Arc, Mutex};
+
 use crate::common::SerializeExt;
 use common::{ClientOutputWrapper, TestReceiver};
 use flume::{r#async::RecvStream, Receiver, Sender};
@@ -16,8 +18,50 @@ mod common;
 // tests inspired by https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/HubProtocol.md#example
 
 #[tokio::test]
+async fn test_non_blocking() {
+    static SHARED: Mutex<usize> = Mutex::new(0usize);
+
+    async fn non_blocking(a: usize, b: usize) {
+        let mut num = SHARED.lock().unwrap();
+        *num = a + b;
+    }
+
+    let mut client =
+        get_wired_client(HubBuilder::new().method(stringify!(non_blocking), non_blocking));
+
+    // well, no error is quite ok here
+    client
+        .send2(stringify!(non_blocking), 1i32, 2i32)
+        .await
+        .unwrap();
+
+    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+    let num = SHARED.lock().unwrap();
+    assert_eq!(3, *num);
+}
+
+#[tokio::test]
 async fn test_add() {
-    let (hub, hub_tx, hub_rx) = build_hub();
+    async fn add(a: i32, b: i32) -> i32 {
+        a + b
+    }
+
+    let mut client = get_wired_client(HubBuilder::new().method(stringify!(add), add));
+
+    let result: i32 = client.invoke2(stringify!(add), 1i32, 2i32).await.unwrap();
+
+    assert_eq!(3, result);
+}
+
+// ============== HELPERS ======================== //
+
+fn get_wired_client(
+    hub_builder: HubBuilder,
+) -> SignalRClient<ClientOutputWrapper<String>, RecvStream<'static, String>, String> {
+    let (hub_tx, hub_rx) = common::create_channels();
+    let hub = hub_builder.build();
+
     let (client, client_tx, client_rx) = build_client();
 
     let f1 = async move {
@@ -39,13 +83,7 @@ async fn test_add() {
     tokio::spawn(f1);
     tokio::spawn(f2);
 
-    // let invocation = Invocation::with_id("123", "add", Some((1i32, 2i32))).to_json();
-
-    // hub.invoke_text(invocation, Default::default(), tx)
-    //     .await
-    //     .unwrap();
-
-    // assert_eq!(Completion::result("123", 3), rx.receive_text_into().await);
+    client
 }
 
 fn build_hub() -> (Hub, ResponseSink, TestReceiver) {
@@ -53,7 +91,14 @@ fn build_hub() -> (Hub, ResponseSink, TestReceiver) {
         a + b
     }
 
-    let hub = HubBuilder::new().method("add", add).build();
+    async fn non_blocking(a: i32, b: i32) {
+        print!("result is {a} + {b} = {0}", a + b)
+    }
+
+    let hub = HubBuilder::new()
+        .method("add", add)
+        .method("non_blocking", non_blocking)
+        .build();
 
     let (tx, rx) = common::create_channels();
 
