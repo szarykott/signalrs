@@ -74,10 +74,7 @@ async fn test_single_result_failure() {
         .await
         .unwrap();
 
-    assert_eq!(
-        Completion::<i32>::error("123", EXPECTED_MESSAGE),
-        rx.receive_text_into().await
-    );
+    assert_eq!(Completion::<i32>::error("123", EXPECTED_MESSAGE), rx.receive_text_into().await);
 }
 
 #[tokio::test]
@@ -96,10 +93,7 @@ async fn test_batched() {
         .await
         .unwrap();
 
-    assert_eq!(
-        Completion::result("123", vec![0, 1, 2, 3, 4]),
-        rx.receive_text_into().await
-    );
+    assert_eq!(Completion::result("123", vec![0, 1, 2, 3, 4]), rx.receive_text_into().await);
 }
 
 #[tokio::test]
@@ -222,37 +216,21 @@ async fn test_add_stream() {
         .await
         .unwrap();
 
-    hub.invoke_text(
-        StreamItem::new("1", 1i32).to_json(),
-        state.clone(),
-        tx.clone(),
-    )
-    .await
-    .unwrap();
+    hub.invoke_text(StreamItem::new("1", 1i32).to_json(), state.clone(), tx.clone())
+        .await
+        .unwrap();
 
-    hub.invoke_text(
-        StreamItem::new("1", 1i32).to_json(),
-        state.clone(),
-        tx.clone(),
-    )
-    .await
-    .unwrap();
+    hub.invoke_text(StreamItem::new("1", 1i32).to_json(), state.clone(), tx.clone())
+        .await
+        .unwrap();
 
-    hub.invoke_text(
-        StreamItem::new("1", 1i32).to_json(),
-        state.clone(),
-        tx.clone(),
-    )
-    .await
-    .unwrap();
+    hub.invoke_text(StreamItem::new("1", 1i32).to_json(), state.clone(), tx.clone())
+        .await
+        .unwrap();
 
-    hub.invoke_text(
-        Completion::<i32>::ok("1").to_json(),
-        state.clone(),
-        tx.clone(),
-    )
-    .await
-    .unwrap();
+    hub.invoke_text(Completion::<i32>::ok("1").to_json(), state.clone(), tx.clone())
+        .await
+        .unwrap();
 
     assert_eq!(Completion::result("123", 3), rx.receive_text_into().await);
 }

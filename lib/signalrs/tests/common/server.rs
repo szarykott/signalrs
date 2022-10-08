@@ -58,10 +58,7 @@ impl TestReceiver {
 
 pub fn create_channels() -> (ResponseSink, TestReceiver) {
     let (tx, rx) = flume::bounded(25);
-    (
-        ResponseSink::new(tx.into_sink()),
-        TestReceiver { receiver: rx },
-    )
+    (ResponseSink::new(tx.into_sink()), TestReceiver { receiver: rx })
 }
 
 const WEIRD_ENDING: &str = "\u{001E}";

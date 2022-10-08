@@ -1,26 +1,30 @@
 use flume::{Receiver, Sender};
 use futures::{Stream, StreamExt};
 use log::*;
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
 
-use super::{ChannelSendError, SignalRClientError};
+use super::{
+    messages::{ClientMessage, MessageEncoding},
+    ChannelSendError, SignalRClientError,
+};
 use crate::protocol::{Completion, MessageType, StreamItem};
 
 pub struct SignalRClientReceiver<S, I> {
     pub(super) incoming_messages: Option<S>,
     pub(super) invocations: Arc<Mutex<HashMap<String, Sender<I>>>>,
+    pub(super) encoding: MessageEncoding,
 }
 
-impl<S> SignalRClientReceiver<S, String>
+impl<S> SignalRClientReceiver<S, ClientMessage>
 where
-    S: Stream<Item = String> + Send + Unpin + 'static,
+    S: Stream<Item = ClientMessage> + Send + Unpin + 'static,
 {
-    pub fn setup_receive_once(&self, invocation_id: impl ToString) -> Receiver<String> {
-        let (tx, rx) = flume::bounded::<String>(1);
+    pub fn setup_receive_once(&self, invocation_id: impl ToString) -> Receiver<ClientMessage> {
+        let (tx, rx) = flume::bounded::<ClientMessage>(1);
         self.insert_invocation(invocation_id.to_string(), tx);
         rx
     }
@@ -28,7 +32,7 @@ where
     pub async fn receive_once<T: DeserializeOwned>(
         &self,
         invocation_id: impl ToString,
-        rx: Receiver<String>,
+        rx: Receiver<ClientMessage>,
     ) -> Result<Result<T, String>, SignalRClientError> {
         let result = Self::receive_completion::<T>(rx).await;
         self.remove_invocation(&invocation_id.to_string());
@@ -36,10 +40,10 @@ where
     }
 
     async fn receive_completion<T: DeserializeOwned>(
-        rx: Receiver<String>,
+        rx: Receiver<ClientMessage>,
     ) -> Result<Result<T, String>, SignalRClientError> {
-        let text = rx.recv_async().await?;
-        let completion: Completion<T> = serde_json::from_str(&text)?;
+        let next = rx.recv_async().await?;
+        let completion: Completion<T> = next.deserialize()?;
 
         if completion.is_result() {
             return Ok(Ok(completion.unwrap_result()));
@@ -56,8 +60,8 @@ where
         })
     }
 
-    pub fn setup_receive_stream(&self, invocation_id: impl ToString) -> Receiver<String> {
-        let (tx, rx) = flume::bounded::<String>(100);
+    pub fn setup_receive_stream(&self, invocation_id: impl ToString) -> Receiver<ClientMessage> {
+        let (tx, rx) = flume::bounded::<ClientMessage>(100);
         self.insert_invocation(invocation_id.to_string(), tx);
         rx
     }
@@ -65,14 +69,15 @@ where
     pub async fn receive_stream<T: DeserializeOwned + Send + 'static>(
         &self,
         invocation_id: impl Into<String>,
-        receiver: Receiver<String>,
-    ) -> Result<ReceiveStream<Result<T, SignalRClientError>, String>, SignalRClientError> {
+        receiver: Receiver<ClientMessage>,
+    ) -> Result<ReceiveStream<Result<T, SignalRClientError>, ClientMessage>, SignalRClientError>
+    {
         let (mut tx, rx) = flume::bounded::<Result<T, SignalRClientError>>(100);
 
         let future = async move {
             let mut input_stream = receiver.into_stream();
             while let Some(next) = input_stream.next().await {
-                let message_type = match serde_json::from_str(&next) {
+                let message_type = match next.deserialize_cloned() {
                     Ok(MessageTypeWrapper { message_type }) => message_type,
                     Err(e) => {
                         error!("{}", e); // FIXME: Forward
@@ -81,7 +86,7 @@ where
                 };
                 match message_type {
                     MessageType::StreamItem => {
-                        let stream_item: StreamItem<T> = match serde_json::from_str(&next) {
+                        let stream_item: StreamItem<T> = match next.deserialize() {
                             Ok(item) => item,
                             Err(e) => {
                                 error!("{}", e); // FIXME: Forward
@@ -95,7 +100,7 @@ where
                         }
                     }
                     MessageType::Completion => {
-                        let completion: Completion<()> = match serde_json::from_str(&next) {
+                        let completion: Completion<()> = match next.deserialize() {
                             Ok(item) => item,
                             Err(e) => {
                                 error!("{}", e); // FIXME: Forward
@@ -154,14 +159,15 @@ where
             .expect("Improper receiver initialization");
 
         let invocations = self.invocations.clone();
+        let encoding = self.encoding;
 
         let future = async move {
             while let Some(next) = incoming.next().await {
-                match serde_json::from_str::<MaybeInvocationId>(&next) {
+                match next.deserialize_cloned::<MaybeInvocationId>() {
                     Ok(MaybeInvocationId { invocation_id }) => {
                         if let Some(invocation_id) = invocation_id {
                             if let Err(error) =
-                                Self::route_text(&invocation_id, next, invocations.clone()).await
+                                Self::route(&invocation_id, next, invocations.clone()).await
                             {
                                 error!("{}", error); // FIXME: Forward
                             }
@@ -180,7 +186,8 @@ where
                                 ),
                             );
 
-                            match serde_json::to_string(&completion) {
+                            let serialized = encoding.serialize(completion);
+                            match serialized {
                                 Ok(text) => {
                                     if let Err(error) = sender.send_async(text).await {
                                         error!("Error finalizing invocation : {}", error);
@@ -194,7 +201,7 @@ where
                                         "Terminating all invocations due to error deserializing message for unknown invocation",
                                     );
 
-                                    let text = serde_json::to_string(&completion).expect("serialization of static object cannot go wrong if it went right once");
+                                    let text = encoding.serialize(completion).expect("serialization of static object cannot go wrong if it went right once");
 
                                     if let Err(error) = sender.send_async(text).await {
                                         error!("Error finalizing invocation : {}", error);
@@ -210,10 +217,10 @@ where
         tokio::spawn(future);
     }
 
-    async fn route_text(
+    async fn route(
         invocation_id: &String,
-        text: String,
-        invocations: Arc<Mutex<HashMap<String, Sender<String>>>>,
+        text: ClientMessage,
+        invocations: Arc<Mutex<HashMap<String, Sender<ClientMessage>>>>,
     ) -> Result<(), SignalRClientError> {
         let sender = {
             let invocations = invocations.lock().unwrap();
@@ -231,13 +238,13 @@ where
     }
 
     fn drain_current_invocations(
-        invocations: Arc<Mutex<HashMap<String, Sender<String>>>>,
-    ) -> Vec<(String, Sender<String>)> {
+        invocations: Arc<Mutex<HashMap<String, Sender<ClientMessage>>>>,
+    ) -> Vec<(String, Sender<ClientMessage>)> {
         let mut invocations = invocations.lock().unwrap();
         invocations.drain().collect()
     }
 
-    fn insert_invocation(&self, id: String, sender: Sender<String>) {
+    fn insert_invocation(&self, id: String, sender: Sender<ClientMessage>) {
         let mut invocations = self.invocations.lock().unwrap();
         (*invocations).insert(id, sender);
     }

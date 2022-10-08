@@ -7,7 +7,7 @@ use common::{ClientOutputWrapper, TestReceiver};
 use flume::{r#async::RecvStream, Receiver, Sender};
 use futures::{SinkExt, Stream, StreamExt};
 use signalrs::{
-    client::{self, ChannelSendError, SignalRClient, SignalRClientError},
+    client::{self, ChannelSendError, ClientMessage, SignalRClient, SignalRClientError},
     connection::ConnectionState,
     hub::{builder::HubBuilder, Hub},
     protocol::*,
@@ -32,7 +32,7 @@ async fn test_non_blocking() {
 
     // well, no error is quite ok here
     client
-        .send2(stringify!(non_blocking), 1i32, 2i32)
+        .send_text2(stringify!(non_blocking), 1i32, 2i32)
         .await
         .unwrap();
 
@@ -85,7 +85,11 @@ async fn test_stream() {
 
 fn get_wired_client(
     hub_builder: HubBuilder,
-) -> SignalRClient<ClientOutputWrapper<String>, RecvStream<'static, String>, String> {
+) -> SignalRClient<
+    ClientOutputWrapper<ClientMessage>,
+    RecvStream<'static, ClientMessage>,
+    ClientMessage,
+> {
     let (hub_tx, hub_rx) = common::create_channels();
     let hub = hub_builder.build();
 
@@ -93,8 +97,8 @@ fn get_wired_client(
 
     let f1 = async move {
         let state = ConnectionState::default();
-        while let Ok(next) = client_rx.recv_async().await {
-            hub.invoke_text(next, state.clone(), hub_tx.clone())
+        while let Ok(ClientMessage::Json(next)) = client_rx.recv_async().await {
+            hub.invoke_text(next.to_string(), state.clone(), hub_tx.clone())
                 .await
                 .unwrap();
         }
@@ -103,7 +107,10 @@ fn get_wired_client(
     let f2 = async move {
         let mut hub_rx = hub_rx.into_text_stream();
         while let Some(next) = hub_rx.next().await {
-            client_tx.send_async(next).await.unwrap();
+            client_tx
+                .send_async(ClientMessage::Json(serde_json::from_str(&next).unwrap()))
+                .await
+                .unwrap();
         }
     };
 
@@ -133,15 +140,19 @@ fn build_hub() -> (Hub, ResponseSink, TestReceiver) {
 }
 
 fn build_client() -> (
-    SignalRClient<ClientOutputWrapper<String>, RecvStream<'static, String>, String>,
-    Sender<String>,
-    Receiver<String>,
+    SignalRClient<
+        ClientOutputWrapper<ClientMessage>,
+        RecvStream<'static, ClientMessage>,
+        ClientMessage,
+    >,
+    Sender<ClientMessage>,
+    Receiver<ClientMessage>,
 ) {
-    let (client_output_sender, client_output_receiver) = flume::bounded::<String>(100);
-    let (client_input_sender, client_input_receiver) = flume::bounded::<String>(100);
+    let (client_output_sender, client_output_receiver) = flume::bounded::<ClientMessage>(100);
+    let (client_input_sender, client_input_receiver) = flume::bounded::<ClientMessage>(100);
 
     let client_output_sender =
-        ClientOutputWrapper::<String>::new_text(client_output_sender.into_sink());
+        ClientOutputWrapper::<ClientMessage>::new_text(client_output_sender.into_sink());
 
     let client = client::new_text_client(client_output_sender, client_input_receiver.into_stream());
 

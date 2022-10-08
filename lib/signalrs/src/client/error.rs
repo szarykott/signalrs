@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use super::messages::ClientMessage;
+
 #[derive(Error, Debug)]
 pub enum SignalRClientError {
     #[error("Json error")]
@@ -28,6 +30,6 @@ pub enum ChannelSendError {
     #[error("Error while sending text message")]
     TextError {
         #[from]
-        source: flume::SendError<String>,
+        source: flume::SendError<ClientMessage>,
     },
 }

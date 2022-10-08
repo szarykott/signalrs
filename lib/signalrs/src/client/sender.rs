@@ -6,10 +6,14 @@ use futures::{
 use serde::Serialize;
 use uuid::Uuid;
 
-use super::SignalRClientError;
+use super::{
+    messages::{ClientMessage, MessageEncoding},
+    SignalRClientError,
+};
 
 pub struct SignalRClientSender<S> {
     pub(super) sink: S,
+    pub(super) encoding: MessageEncoding,
 }
 
 macro_rules! send_text {
@@ -35,10 +39,11 @@ macro_rules! send_text {
                 match $ty.into() {
                     InvocationPart::Argument(arg) => arguments.push(serde_json::to_value(arg)?),
                     InvocationPart::Stream(stream) => {
+                        let encoding = self.encoding;
                         streams.push(
-                            Box::new(stream.map(|x| serde_json::to_value(x).map_err(|x| x.into())))
+                            Box::new(stream.map(move |x| encoding.serialize(x).map_err(|x| x.into())))
                                 as Box<
-                                    dyn Stream<Item = Result<serde_json::Value, SignalRClientError>>
+                                    dyn Stream<Item = Result<ClientMessage, SignalRClientError>>
                                         + Unpin,
                                 >,
                         );
@@ -66,7 +71,7 @@ macro_rules! send_text {
 
 impl<S> SignalRClientSender<S>
 where
-    S: Sink<String, Error = SignalRClientError> + Unpin + Clone,
+    S: Sink<ClientMessage, Error = SignalRClientError> + Unpin + Clone,
 {
     pub async fn send_text0(
         &mut self,
@@ -88,37 +93,8 @@ where
     send_text!(send_text9, T1, T2, T3, T4, T5, T6, T7, T8, T9);
     send_text!(send_text10, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
     send_text!(send_text11, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
-    send_text!(
-        send_text12,
-        T1,
-        T2,
-        T3,
-        T4,
-        T5,
-        T6,
-        T7,
-        T8,
-        T9,
-        T10,
-        T11,
-        T12
-    );
-    send_text!(
-        send_text13,
-        T1,
-        T2,
-        T3,
-        T4,
-        T5,
-        T6,
-        T7,
-        T8,
-        T9,
-        T10,
-        T11,
-        T12,
-        T13
-    );
+    send_text!(send_text12, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
+    send_text!(send_text13, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
 
     async fn actually_send_text(
         &mut self,
@@ -126,7 +102,7 @@ where
         invocation_id: Option<String>,
         arguments: Option<Vec<serde_json::Value>>,
         streams: Option<
-            Vec<Box<dyn Stream<Item = Result<serde_json::Value, SignalRClientError>> + Unpin>>,
+            Vec<Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>>,
         >,
     ) -> Result<(), SignalRClientError> {
         let mut invocation = Invocation::new_non_blocking(target, arguments);
@@ -144,15 +120,17 @@ where
             invocation.with_streams(stream_ids.clone());
         }
 
-        self.sink.send(serde_json::to_string(&invocation)?).await?;
+        let serialized = self.encoding.serialize(&invocation)?;
+        self.sink.send(serialized).await?;
 
         if let Some(streams) = streams {
             let mut futures = FuturesUnordered::new();
 
             for (id, stream) in stream_ids.into_iter().zip(streams) {
                 let sink = self.sink.clone();
+                let encoding = self.encoding;
                 let future = async move {
-                    match Self::stream_it(sink, id.as_str(), stream).await {
+                    match Self::stream_it(sink, id.as_str(), encoding, stream).await {
                         Ok(()) => Ok(()),
                         Err(error) => Err((id, error)),
                     }
@@ -164,7 +142,8 @@ where
             while let Some(result) = futures.next().await {
                 if let Err((id, error)) = result {
                     let completion = Completion::<()>::error(id, error.to_string());
-                    self.sink.send(serde_json::to_string(&completion)?).await?;
+                    let serialized = self.encoding.serialize(completion)?;
+                    self.sink.send(serialized).await?;
                     return Err(error); // TODO: return here? client might still be interested in the rest of streams
                 }
             }
@@ -176,13 +155,15 @@ where
     async fn stream_it(
         mut sink: S,
         invocation_id: &str,
-        mut stream: Box<dyn Stream<Item = Result<serde_json::Value, SignalRClientError>> + Unpin>,
+        encoding: MessageEncoding,
+        mut stream: Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>,
     ) -> Result<(), SignalRClientError> {
         loop {
             match stream.next().await {
                 Some(Ok(value)) => {
                     let stream_item = StreamItem::new(invocation_id, value);
-                    sink.send(serde_json::to_string(&stream_item)?).await?;
+                    let serialized = encoding.serialize(stream_item)?;
+                    sink.send(serialized).await?;
                 }
                 Some(Err(error)) => return Err(error),
                 None => return Ok(()),
@@ -236,5 +217,3 @@ where
         InvocationPart::Stream(self)
     }
 }
-
-// ($($ty:ident),+)

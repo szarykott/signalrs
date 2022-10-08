@@ -1,4 +1,5 @@
 mod error;
+mod messages;
 mod receiver;
 mod sender;
 
@@ -10,8 +11,12 @@ use std::{
 };
 use uuid::Uuid;
 
-pub use self::error::{ChannelSendError, SignalRClientError};
+pub use self::{
+    error::{ChannelSendError, SignalRClientError},
+    messages::ClientMessage,
+};
 use self::{
+    messages::MessageEncoding,
     receiver::SignalRClientReceiver,
     sender::{IntoInvocationPart, SignalRClientSender},
 };
@@ -21,43 +26,71 @@ pub struct SignalRClient<Sink, Stream, Item> {
     receiver: receiver::SignalRClientReceiver<Stream, Item>,
 }
 
-pub fn new_text_client<Out, In>(output: Out, input: In) -> SignalRClient<Out, In, String>
+pub fn new_text_client<Out, In>(output: Out, input: In) -> SignalRClient<Out, In, ClientMessage>
 where
-    Out: Sink<String, Error = SignalRClientError> + Unpin + Clone,
-    In: Stream<Item = String> + Send + Unpin + 'static,
+    Out: Sink<ClientMessage, Error = SignalRClientError> + Unpin + Clone,
+    In: Stream<Item = ClientMessage> + Send + Unpin + 'static,
 {
     let mut receiver = SignalRClientReceiver {
         invocations: Arc::new(Mutex::new(HashMap::new())),
         incoming_messages: Some(input),
+        encoding: MessageEncoding::Json,
     };
 
     receiver.start_receiver_loop();
 
     SignalRClient {
-        sender: SignalRClientSender { sink: output },
+        sender: SignalRClientSender {
+            sink: output,
+            encoding: MessageEncoding::Json,
+        },
         receiver,
     }
 }
 
-impl<Si, St> SignalRClient<Si, St, String>
+macro_rules! send_text_x {
+    ($name:ident, $($ty:ident),+) => {
+        #[allow(non_snake_case)]
+        pub async fn $name<$($ty,)+>(
+            &mut self,
+            target: impl ToString,
+            $(
+                $ty: $ty,
+            )+
+        ) -> Result<(), SignalRClientError>
+        where
+            $(
+                $ty: IntoInvocationPart<$ty> + Serialize + 'static,
+            )+
+        {
+            self.sender
+                .$name(target.to_string(), None, $($ty,)+)
+                .await
+        }
+    };
+}
+
+impl<Si, St> SignalRClient<Si, St, ClientMessage>
 where
-    Si: Sink<String, Error = SignalRClientError> + Unpin + Clone,
-    St: Stream<Item = String> + Send + Unpin + 'static,
+    Si: Sink<ClientMessage, Error = SignalRClientError> + Unpin + Clone,
+    St: Stream<Item = ClientMessage> + Send + Unpin + 'static,
 {
-    pub async fn send2<T1, T2>(
-        &mut self,
-        target: impl ToString,
-        arg1: T1,
-        arg2: T2,
-    ) -> Result<(), SignalRClientError>
-    where
-        T1: IntoInvocationPart<T1> + Serialize + 'static,
-        T2: IntoInvocationPart<T2> + Serialize + 'static,
-    {
-        self.sender
-            .send_text2(target.to_string(), None, arg1, arg2)
-            .await
+    pub async fn send_text_0(&mut self, target: impl ToString) -> Result<(), SignalRClientError> {
+        self.sender.send_text0(target.to_string(), None).await
     }
+    send_text_x!(send_text1, T1);
+    send_text_x!(send_text2, T1, T2);
+    send_text_x!(send_text3, T1, T2, T3);
+    send_text_x!(send_text4, T1, T2, T3, T4);
+    send_text_x!(send_text5, T1, T2, T3, T4, T5);
+    send_text_x!(send_text6, T1, T2, T3, T4, T5, T6);
+    send_text_x!(send_text7, T1, T2, T3, T4, T5, T6, T7);
+    send_text_x!(send_text8, T1, T2, T3, T4, T5, T6, T7, T8);
+    send_text_x!(send_text9, T1, T2, T3, T4, T5, T6, T7, T8, T9);
+    send_text_x!(send_text10, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
+    send_text_x!(send_text11, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
+    send_text_x!(send_text12, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
+    send_text_x!(send_text13, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
 
     pub async fn invoke2<T1, T2, R>(
         &mut self,
