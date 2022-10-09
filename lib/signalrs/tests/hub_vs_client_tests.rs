@@ -32,7 +32,7 @@ async fn test_non_blocking() {
 
     // well, no error is quite ok here
     client
-        .send_text2(stringify!(non_blocking), 1i32, 2i32)
+        .send2(stringify!(non_blocking), 1i32, 2i32)
         .await
         .unwrap();
 
@@ -85,11 +85,7 @@ async fn test_stream() {
 
 fn get_wired_client(
     hub_builder: HubBuilder,
-) -> SignalRClient<
-    ClientOutputWrapper<ClientMessage>,
-    RecvStream<'static, ClientMessage>,
-    ClientMessage,
-> {
+) -> SignalRClient<ClientOutputWrapper<ClientMessage>, RecvStream<'static, ClientMessage>> {
     let (hub_tx, hub_rx) = common::create_channels();
     let hub = hub_builder.build();
 
@@ -140,11 +136,7 @@ fn build_hub() -> (Hub, ResponseSink, TestReceiver) {
 }
 
 fn build_client() -> (
-    SignalRClient<
-        ClientOutputWrapper<ClientMessage>,
-        RecvStream<'static, ClientMessage>,
-        ClientMessage,
-    >,
+    SignalRClient<ClientOutputWrapper<ClientMessage>, RecvStream<'static, ClientMessage>>,
     Sender<ClientMessage>,
     Receiver<ClientMessage>,
 ) {

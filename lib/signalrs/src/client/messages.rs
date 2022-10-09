@@ -8,7 +8,7 @@ use super::SignalRClientError;
 #[non_exhaustive]
 #[serde(untagged)]
 pub enum ClientMessage {
-    Json(serde_json::Value),
+    Json(String),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -23,21 +23,12 @@ impl ClientMessage {
         }
     }
 
-    pub fn deserialize<T>(self) -> Result<T, SignalRClientError>
+    pub fn deserialize<T>(&self) -> Result<T, SignalRClientError>
     where
         T: DeserializeOwned,
     {
         match self {
-            ClientMessage::Json(value) => Ok(serde_json::from_value(value)?),
-        }
-    }
-
-    pub fn deserialize_cloned<T>(&self) -> Result<T, SignalRClientError>
-    where
-        T: DeserializeOwned,
-    {
-        match self {
-            ClientMessage::Json(value) => Ok(serde_json::from_value(value.clone())?),
+            ClientMessage::Json(value) => Ok(serde_json::from_str(&value)?),
         }
     }
 }
@@ -45,7 +36,7 @@ impl ClientMessage {
 impl MessageEncoding {
     pub fn serialize(&self, message: impl Serialize) -> Result<ClientMessage, SignalRClientError> {
         match self {
-            MessageEncoding::Json => Ok(ClientMessage::Json(serde_json::to_value(&message)?)),
+            MessageEncoding::Json => Ok(ClientMessage::Json(serde_json::to_string(&message)?)),
         }
     }
 }

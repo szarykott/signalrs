@@ -1,7 +1,7 @@
 use flume::{Receiver, Sender};
 use futures::{Stream, StreamExt};
 use log::*;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -77,7 +77,7 @@ where
         let future = async move {
             let mut input_stream = receiver.into_stream();
             while let Some(next) = input_stream.next().await {
-                let message_type = match next.deserialize_cloned() {
+                let message_type = match next.deserialize() {
                     Ok(MessageTypeWrapper { message_type }) => message_type,
                     Err(e) => {
                         error!("{}", e); // FIXME: Forward
@@ -163,7 +163,7 @@ where
 
         let future = async move {
             while let Some(next) = incoming.next().await {
-                match next.deserialize_cloned::<MaybeInvocationId>() {
+                match next.deserialize::<MaybeInvocationId>() {
                     Ok(MaybeInvocationId { invocation_id }) => {
                         if let Some(invocation_id) = invocation_id {
                             if let Err(error) =

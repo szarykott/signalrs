@@ -16,7 +16,7 @@ pub struct SignalRClientSender<S> {
     pub(super) encoding: MessageEncoding,
 }
 
-macro_rules! send_text {
+macro_rules! send_x {
     ($name:ident, $($ty:ident),+) => {
         #[allow(non_snake_case)]
         pub async fn $name<$($ty,)+>(
@@ -63,7 +63,7 @@ macro_rules! send_text {
                 Some(streams)
             };
 
-            self.actually_send_text(target, invocation_id, arguments, streams)
+            self.actually_send(target, invocation_id, arguments, streams)
                 .await
         }
     };
@@ -73,30 +73,29 @@ impl<S> SignalRClientSender<S>
 where
     S: Sink<ClientMessage, Error = SignalRClientError> + Unpin + Clone,
 {
-    pub async fn send_text0(
+    pub async fn send0(
         &mut self,
         target: String,
         invocation_id: Option<String>,
     ) -> Result<(), SignalRClientError> {
-        self.actually_send_text(target, invocation_id, None, None)
-            .await
+        self.actually_send(target, invocation_id, None, None).await
     }
 
-    send_text!(send_text1, T1);
-    send_text!(send_text2, T1, T2);
-    send_text!(send_text3, T1, T2, T3);
-    send_text!(send_text4, T1, T2, T3, T4);
-    send_text!(send_text5, T1, T2, T3, T4, T5);
-    send_text!(send_text6, T1, T2, T3, T4, T5, T6);
-    send_text!(send_text7, T1, T2, T3, T4, T5, T6, T7);
-    send_text!(send_text8, T1, T2, T3, T4, T5, T6, T7, T8);
-    send_text!(send_text9, T1, T2, T3, T4, T5, T6, T7, T8, T9);
-    send_text!(send_text10, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
-    send_text!(send_text11, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
-    send_text!(send_text12, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
-    send_text!(send_text13, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
+    send_x!(send1, T1);
+    send_x!(send2, T1, T2);
+    send_x!(send3, T1, T2, T3);
+    send_x!(send4, T1, T2, T3, T4);
+    send_x!(send5, T1, T2, T3, T4, T5);
+    send_x!(send6, T1, T2, T3, T4, T5, T6);
+    send_x!(send7, T1, T2, T3, T4, T5, T6, T7);
+    send_x!(send8, T1, T2, T3, T4, T5, T6, T7, T8);
+    send_x!(send9, T1, T2, T3, T4, T5, T6, T7, T8, T9);
+    send_x!(send10, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
+    send_x!(send11, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
+    send_x!(send12, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
+    send_x!(send13, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
 
-    async fn actually_send_text(
+    async fn actually_send(
         &mut self,
         target: String,
         invocation_id: Option<String>,
