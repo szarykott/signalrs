@@ -4,31 +4,32 @@ use serde::{de::DeserializeOwned, Serialize};
 
 use super::SignalRClientError;
 
-#[derive(Debug, Clone, Serialize)]
-#[non_exhaustive]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(untagged)]
+#[non_exhaustive]
 pub enum ClientMessage {
     Json(String),
 }
 
 #[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
 pub enum MessageEncoding {
     Json,
 }
 
 impl ClientMessage {
-    pub fn get_encoding(&self) -> MessageEncoding {
-        match self {
-            ClientMessage::Json(_) => MessageEncoding::Json,
-        }
-    }
-
     pub fn deserialize<T>(&self) -> Result<T, SignalRClientError>
     where
         T: DeserializeOwned,
     {
         match self {
             ClientMessage::Json(value) => Ok(serde_json::from_str(&value)?),
+        }
+    }
+
+    pub fn unwrap_text(self) -> String {
+        match self {
+            ClientMessage::Json(value) => value,
         }
     }
 }

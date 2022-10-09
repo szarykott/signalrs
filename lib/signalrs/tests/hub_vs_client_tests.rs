@@ -104,7 +104,7 @@ fn get_wired_client(
         let mut hub_rx = hub_rx.into_text_stream();
         while let Some(next) = hub_rx.next().await {
             client_tx
-                .send_async(ClientMessage::Json(serde_json::from_str(&next).unwrap()))
+                .send_async(ClientMessage::Json(next))
                 .await
                 .unwrap();
         }
@@ -114,25 +114,6 @@ fn get_wired_client(
     tokio::spawn(f2);
 
     client
-}
-
-fn build_hub() -> (Hub, ResponseSink, TestReceiver) {
-    async fn add(a: i32, b: i32) -> i32 {
-        a + b
-    }
-
-    async fn non_blocking(a: i32, b: i32) {
-        print!("result is {a} + {b} = {0}", a + b)
-    }
-
-    let hub = HubBuilder::new()
-        .method("add", add)
-        .method("non_blocking", non_blocking)
-        .build();
-
-    let (tx, rx) = common::create_channels();
-
-    (hub, tx, rx)
 }
 
 fn build_client() -> (

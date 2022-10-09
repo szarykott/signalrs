@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use futures::{Sink, SinkExt, Stream};
 
 use flume::{r#async::SendSink, Receiver, Sender};
@@ -55,5 +57,16 @@ impl Sink<ClientMessage> for ClientOutputWrapper<ClientMessage> {
             .poll_close_unpin(cx)
             .map_err(|x| -> ChannelSendError { x.into() })
             .map_err(|x| -> SignalRClientError { x.into() })
+    }
+}
+
+pub trait ReceiverExt {
+    fn next_json_value(&self) -> serde_json::Value;
+}
+
+impl ReceiverExt for Receiver<ClientMessage> {
+    fn next_json_value(&self) -> serde_json::Value {
+        let text = self.recv().unwrap().unwrap_text();
+        serde_json::Value::from_str(text.as_str()).unwrap()
     }
 }
