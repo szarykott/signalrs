@@ -7,7 +7,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use super::{
-    messages::{ClientMessage, MessageEncoding},
+    messages::{self, ClientMessage, MessageEncoding},
     SignalRClientError,
 };
 
@@ -126,6 +126,45 @@ where
             let mut futures = FuturesUnordered::new();
 
             for (id, stream) in stream_ids.into_iter().zip(streams) {
+                let sink = self.sink.clone();
+                let encoding = self.encoding;
+                let future = async move {
+                    match Self::stream_it(sink, id.as_str(), encoding, stream).await {
+                        Ok(()) => Ok(()),
+                        Err(error) => Err((id, error)),
+                    }
+                };
+
+                futures.push(future);
+            }
+
+            while let Some(result) = futures.next().await {
+                if let Err((id, error)) = result {
+                    let completion = Completion::<()>::error(id, error.to_string());
+                    let serialized = self.encoding.serialize(completion)?;
+                    self.sink.send(serialized).await?;
+                    return Err(error); // TODO: return here? client might still be interested in the rest of streams
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(super) async fn actually_send2(
+        &mut self,
+        serialized: ClientMessage,
+        streams: Vec<(
+            String,
+            Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>,
+        )>,
+    ) -> Result<(), SignalRClientError> {
+        self.sink.send(serialized).await?;
+
+        if !streams.is_empty() {
+            let mut futures = FuturesUnordered::new();
+
+            for (id, stream) in streams {
                 let sink = self.sink.clone();
                 let encoding = self.encoding;
                 let future = async move {

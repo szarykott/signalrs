@@ -14,13 +14,13 @@ use super::{
 };
 use crate::protocol::{Completion, MessageType, StreamItem};
 
-pub struct SignalRClientReceiver<S, I> {
+pub struct SignalRClientReceiver<S> {
     pub(super) incoming_messages: Option<S>,
-    pub(super) invocations: Arc<Mutex<HashMap<String, Sender<I>>>>,
+    pub(super) invocations: Arc<Mutex<HashMap<String, Sender<ClientMessage>>>>,
     pub(super) encoding: MessageEncoding,
 }
 
-impl<S> SignalRClientReceiver<S, ClientMessage>
+impl<S> SignalRClientReceiver<S>
 where
     S: Stream<Item = ClientMessage> + Send + Unpin + 'static,
 {

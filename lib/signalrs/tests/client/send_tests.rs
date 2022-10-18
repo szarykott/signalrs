@@ -24,10 +24,10 @@ macro_rules! test_send {
     };
 }
 #[tokio::test]
-async fn test_send0() {
+async fn test_send_no_args() -> Result<(), Box<dyn std::error::Error>> {
     let (mut client, rx) = build_client();
 
-    client.send0("fun").await.unwrap();
+    client.method("fun").send().await?;
 
     let expected = json!({
         "type" : 1,
@@ -37,6 +37,8 @@ async fn test_send0() {
     let actual = rx.next_json_value();
 
     assert_eq!(expected, actual);
+
+    Ok(())
 }
 
 test_send!(test_send1, send1, 1);

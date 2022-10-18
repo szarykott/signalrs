@@ -112,7 +112,9 @@ impl<A> Invocation<A> {
     }
 
     pub fn with_streams(&mut self, stream_ids: Vec<String>) -> &mut Self {
-        self.stream_ids = Some(stream_ids);
+        if !stream_ids.is_empty() {
+            self.stream_ids = Some(stream_ids);
+        }
         self
     }
 
@@ -169,6 +171,13 @@ impl<A> StreamInvocation<A> {
             arguments,
             stream_ids: None,
         }
+    }
+
+    pub fn with_streams(&mut self, stream_ids: Vec<String>) -> &mut Self {
+        if !stream_ids.is_empty() {
+            self.stream_ids = Some(stream_ids);
+        }
+        self
     }
 }
 

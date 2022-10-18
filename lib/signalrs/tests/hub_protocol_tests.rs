@@ -74,7 +74,10 @@ async fn test_single_result_failure() {
         .await
         .unwrap();
 
-    assert_eq!(Completion::<i32>::error("123", EXPECTED_MESSAGE), rx.receive_text_into().await);
+    assert_eq!(
+        Completion::<i32>::error("123", EXPECTED_MESSAGE),
+        rx.receive_text_into().await
+    );
 }
 
 #[tokio::test]
@@ -93,7 +96,10 @@ async fn test_batched() {
         .await
         .unwrap();
 
-    assert_eq!(Completion::result("123", vec![0, 1, 2, 3, 4]), rx.receive_text_into().await);
+    assert_eq!(
+        Completion::result("123", vec![0, 1, 2, 3, 4]),
+        rx.receive_text_into().await
+    );
 }
 
 #[tokio::test]
