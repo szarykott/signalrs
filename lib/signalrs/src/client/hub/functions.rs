@@ -4,7 +4,7 @@ use super::invocation::{FromInvocation, HubInvocation};
 use crate::client::SignalRClientError;
 use futures::Future;
 
-pub trait Callable {
+pub trait HubMethod {
     fn call(&self, request: HubInvocation) -> Result<(), SignalRClientError>;
 }
 
@@ -12,12 +12,12 @@ pub trait Handler<T> {
     fn call(self, request: HubInvocation) -> Result<(), SignalRClientError>;
 }
 
-pub struct CallableStruct<H, T> {
+pub struct HandlerWrapper<H, T> {
     handler: H,
     _marker: PhantomData<T>,
 }
 
-impl<H, T> Callable for CallableStruct<H, T>
+impl<H, T> HubMethod for HandlerWrapper<H, T>
 where
     H: Handler<T> + Clone,
 {
@@ -26,12 +26,12 @@ where
     }
 }
 
-impl<H, T> From<H> for CallableStruct<H, T>
+impl<H, T> From<H> for HandlerWrapper<H, T>
 where
     H: Handler<T> + Clone,
 {
     fn from(handler: H) -> Self {
-        CallableStruct {
+        HandlerWrapper {
             handler,
             _marker: Default::default(),
         }
