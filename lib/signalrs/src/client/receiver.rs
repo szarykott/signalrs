@@ -2,7 +2,6 @@ use flume::{Receiver, Sender};
 use futures::{Stream, StreamExt};
 use log::*;
 use serde::{de::DeserializeOwned, Deserialize};
-use std::collections::HashSet;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},

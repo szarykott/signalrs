@@ -1,8 +1,8 @@
 use std::str::FromStr;
 
-use futures::{Sink, SinkExt, Stream};
+use futures::{Sink, SinkExt};
 
-use flume::{r#async::SendSink, Receiver, Sender};
+use flume::{r#async::SendSink, Receiver};
 use signalrs::client::{ChannelSendError, ClientMessage, SignalRClientError};
 
 #[derive(Clone)]
