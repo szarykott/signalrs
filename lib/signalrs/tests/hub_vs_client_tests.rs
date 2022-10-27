@@ -11,10 +11,13 @@ use flume::{r#async::RecvStream, Receiver, Sender};
 use futures::{SinkExt, Stream, StreamExt};
 use signalrs::{
     client::{self, ChannelSendError, ClientMessage, SignalRClient, SignalRClientError},
-    connection::ConnectionState,
-    hub::{builder::HubBuilder, Hub},
     protocol::*,
-    server::{response::ResponseSink, Server},
+    server::{
+        connection::ConnectionState,
+        hub::{builder::HubBuilder, Hub},
+        response::ResponseSink,
+        Server,
+    },
 };
 
 mod common;

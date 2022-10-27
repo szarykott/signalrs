@@ -1,9 +1,10 @@
 use crate::{
-    connection::ConnectionState,
     protocol::{Arguments, OptionalId},
-    server::{error::SignalRError, extract::ExtractionError, response::ResponseSink},
+    server::{connection::ConnectionState, extract::ExtractionError, response::ResponseSink},
 };
 use tokio_util::sync::CancellationToken;
+
+use super::error::SignalRError;
 
 pub struct HubInvocation {
     pub(crate) payload: Payload,

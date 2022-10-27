@@ -8,10 +8,8 @@ use axum::{
 use futures::{future::FutureExt, select, sink::SinkExt, stream::StreamExt};
 use log::*;
 use signalrs::{
-    connection::ConnectionState,
-    hub::Hub,
     negotiate::NegotiateResponseV0,
-    server::{response::ResponseSink, Server},
+    server::{connection::ConnectionState, hub::Hub, response::ResponseSink, Server},
 };
 use std::sync::Arc;
 

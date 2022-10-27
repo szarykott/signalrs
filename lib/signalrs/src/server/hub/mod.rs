@@ -4,8 +4,9 @@ mod functions;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 use self::functions::Callable;
-use crate::server::error::SignalRError;
 use futures::Future;
+
+use super::error::SignalRError;
 
 pub struct Hub {
     pub(crate) methods: HashMap<

@@ -1,11 +1,15 @@
+pub mod connection;
 pub mod error;
 pub mod extract;
+pub mod hub;
 pub mod invocation;
 pub mod response;
 
-use self::{error::SignalRError, invocation::HubInvocation, response::ResponseSink};
-use super::hub::Hub;
-use crate::{connection::ConnectionState, protocol::*, serialization};
+use self::{
+    connection::ConnectionState, error::SignalRError, hub::Hub, invocation::HubInvocation,
+    response::ResponseSink,
+};
+use crate::{protocol::*, serialization};
 use futures::SinkExt;
 use log::*;
 use serde_json::Value;

@@ -1,8 +1,17 @@
 mod error;
+mod hub;
 mod messages;
 mod receiver;
 mod sender;
 
+pub use self::{
+    error::{ChannelSendError, SignalRClientError},
+    messages::ClientMessage,
+    messages::MessageEncoding,
+    receiver::SignalRClientReceiver,
+    sender::{IntoInvocationPart, InvocationPart, SignalRClientSender},
+};
+use crate::protocol::{Invocation, StreamInvocation};
 use futures::{Sink, Stream, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
@@ -10,18 +19,6 @@ use std::{
     sync::{Arc, Mutex},
 };
 use uuid::Uuid;
-
-use crate::protocol::{Invocation, StreamInvocation};
-
-pub use self::{
-    error::{ChannelSendError, SignalRClientError},
-    messages::ClientMessage,
-};
-use self::{
-    messages::MessageEncoding,
-    receiver::SignalRClientReceiver,
-    sender::{IntoInvocationPart, InvocationPart, SignalRClientSender},
-};
 
 pub struct SignalRClient<Sink, Stream> {
     sender: sender::SignalRClientSender<Sink>,
@@ -63,7 +60,7 @@ where
             sender: &mut self.sender,
             receiver: &mut self.receiver,
             encoding: self.encoding,
-            state: AcceptingArgs {
+            state: Arguments {
                 method: target.to_string(),
                 arguments: Default::default(),
                 streams: Default::default(),
@@ -76,10 +73,10 @@ pub struct SignalRSendBuilder<'a, Si, St> {
     sender: &'a mut sender::SignalRClientSender<Si>,
     receiver: &'a mut receiver::SignalRClientReceiver<St>,
     encoding: MessageEncoding,
-    state: AcceptingArgs,
+    state: Arguments,
 }
 
-pub struct AcceptingArgs {
+pub struct Arguments {
     method: String,
     arguments: Vec<serde_json::Value>,
     streams: Vec<Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>>,

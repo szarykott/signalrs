@@ -6,13 +6,14 @@ use std::{fmt::Debug, task::Poll};
 use thiserror::Error;
 
 use crate::{
-    connection::{ClientSink, StreamItemPayload},
     protocol::{Arguments, ClientStreams},
     server::{
-        error::SignalRError,
+        connection::{ClientSink, StreamItemPayload},
         invocation::{ArgumentsLeft, HubInvocation, Payload},
     },
 };
+
+use super::error::SignalRError;
 
 pub trait FromInvocation
 where

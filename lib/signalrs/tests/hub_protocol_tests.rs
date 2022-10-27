@@ -9,11 +9,10 @@ use futures::{
 use log::LevelFilter;
 use log::*;
 use signalrs::{
-    connection::ConnectionState,
-    hub::builder::HubBuilder,
     protocol::*,
     server::{
-        error::SignalRError, extract::UploadStream, invocation, response::ResponseSink, Server,
+        connection::ConnectionState, error::SignalRError, extract::UploadStream,
+        hub::builder::HubBuilder, invocation, response::ResponseSink, Server,
     },
 };
 use simple_logger::SimpleLogger;

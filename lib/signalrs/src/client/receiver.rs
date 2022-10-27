@@ -19,6 +19,12 @@ pub struct SignalRClientReceiver<S> {
     pub(super) encoding: MessageEncoding,
 }
 
+struct ReceiverLooper<S> {
+    pub(super) incoming_messages: S,
+    pub(super) invocations: Arc<Mutex<HashMap<String, Sender<ClientMessage>>>>,
+    pub(super) encoding: MessageEncoding,
+}
+
 impl<S> SignalRClientReceiver<S>
 where
     S: Stream<Item = ClientMessage> + Send + Unpin + 'static,
@@ -152,89 +158,26 @@ where
         }
     }
 
+    // ==============================================//
+    // Receiver loop
+    // ==============================================//
+
     pub(super) fn start_receiver_loop(&mut self) {
-        let mut incoming = self
+        let invocations = self.invocations.clone();
+        let encoding = self.encoding;
+        let incoming = self
             .incoming_messages
             .take()
             .expect("Improper receiver initialization");
 
-        let invocations = self.invocations.clone();
-        let encoding = self.encoding;
-
-        let future = async move {
-            while let Some(next) = incoming.next().await {
-                match next.deserialize::<MaybeInvocationId>() {
-                    Ok(MaybeInvocationId { invocation_id }) => {
-                        if let Some(invocation_id) = invocation_id {
-                            if let Err(error) =
-                                Self::route(&invocation_id, next, invocations.clone()).await
-                            {
-                                error!("{}", error); // FIXME: Forward
-                            }
-                            continue;
-                        }
-                        unimplemented!()
-                    }
-                    Err(error) => {
-                        for (id, sender) in Self::drain_current_invocations(invocations.clone()) {
-                            let completion = Completion::<()>::error(
-                                id.as_str(),
-                                format!(
-                                    "Terminating all client invocations due to JSON error {} while deserializing {}",
-                                    error,
-                                    next.to_string()
-                                ),
-                            );
-
-                            let serialized = encoding.serialize(completion);
-                            match serialized {
-                                Ok(text) => {
-                                    if let Err(error) = sender.send_async(text).await {
-                                        error!("Error finalizing invocation : {}", error);
-                                    }
-                                }
-                                Err(error) => {
-                                    error!("error serializing completion error {}", error);
-
-                                    let completion = Completion::<()>::error(
-                                        id,
-                                        "Terminating all invocations due to error deserializing message for unknown invocation",
-                                    );
-
-                                    let text = encoding.serialize(completion).expect("serialization of static object cannot go wrong if it went right once");
-
-                                    if let Err(error) = sender.send_async(text).await {
-                                        error!("Error finalizing invocation : {}", error);
-                                    }
-                                }
-                            };
-                        }
-                    }
-                }
+        tokio::spawn(
+            ReceiverLooper {
+                encoding,
+                invocations,
+                incoming_messages: incoming,
             }
-        };
-
-        tokio::spawn(future);
-    }
-
-    async fn route(
-        invocation_id: &String,
-        text: ClientMessage,
-        invocations: Arc<Mutex<HashMap<String, Sender<ClientMessage>>>>,
-    ) -> Result<(), SignalRClientError> {
-        let sender = {
-            let invocations = invocations.lock().unwrap();
-            invocations.get(invocation_id).and_then(|x| Some(x.clone()))
-        };
-
-        if let Some(sender) = sender {
-            sender
-                .send_async(text)
-                .await
-                .map_err(|x| -> ChannelSendError { x.into() })?;
-        }
-
-        Ok(())
+            .receiver_loop(),
+        );
     }
 
     fn drain_current_invocations(
@@ -255,10 +198,118 @@ where
     }
 }
 
+impl<S> ReceiverLooper<S>
+where
+    S: Stream<Item = ClientMessage> + Send + Unpin + 'static,
+{
+    async fn receiver_loop(mut self) {
+        while let Some(next) = self.incoming_messages.next().await {
+            match next.deserialize::<RoutingData>() {
+                Ok(RoutingData {
+                    invocation_id,
+                    message_type,
+                }) => {
+                    match message_type {
+                        MessageType::Invocation
+                        | MessageType::StreamInvocation
+                        | MessageType::CancelInvocation => todo!(),
+                        MessageType::Completion | MessageType::StreamItem => {
+                            if let Err(e) =
+                                self.route_message_to_listener(invocation_id, next).await
+                            {
+                                error!("{}", e); // FIXME: Forward
+                            }
+                        }
+                        MessageType::Ping => { /* oh, well */ }
+                        MessageType::Close => todo!(),
+                        MessageType::Other => { /* this is unexpcted */ }
+                    }
+                }
+                Err(error) => self.handle_receiver_loop_error(error, next).await,
+            }
+        }
+    }
+
+    async fn route_message_to_listener(
+        &mut self,
+        invocation_id: Option<String>,
+        message: ClientMessage,
+    ) -> Result<(), SignalRClientError> {
+        let invocation_id = invocation_id.ok_or_else(|| SignalRClientError::ProtocolError {
+            message: "Received message without invocation id".into(),
+        })?;
+
+        let sender = {
+            let invocations = self.invocations.lock().unwrap();
+            invocations
+                .get(&invocation_id)
+                .and_then(|x| Some(x.clone()))
+        };
+
+        if let Some(sender) = sender {
+            sender
+                .send_async(message)
+                .await
+                .map_err(|x| -> ChannelSendError { x.into() })?;
+        }
+
+        Ok(())
+    }
+
+    async fn handle_receiver_loop_error(
+        &mut self,
+        error: SignalRClientError,
+        message: ClientMessage,
+    ) {
+        for (id, sender) in Self::drain_current_invocations(self.invocations.clone()) {
+            let completion = Completion::<()>::error(
+                id.as_str(),
+                format!(
+                "Terminating all client invocations due to JSON error {} while deserializing {}", error, message.to_string()),
+            );
+
+            let serialized = self.encoding.serialize(completion);
+
+            match serialized {
+                Ok(text) => {
+                    if let Err(error) = sender.send_async(text).await {
+                        error!("Error finalizing invocation : {}", error);
+                    }
+                }
+                Err(error) => {
+                    error!("error serializing completion error {}", error);
+
+                    let completion = Completion::<()>::error(
+                    id,
+                    "Terminating all invocations due to error deserializing message for unknown invocation",
+                );
+
+                    let text = self.encoding.serialize(completion).expect(
+                        "serialization of static object cannot go wrong if it went right once",
+                    );
+
+                    if let Err(error) = sender.send_async(text).await {
+                        error!("Error finalizing invocation : {}", error);
+                    }
+                }
+            };
+        }
+    }
+
+    fn drain_current_invocations(
+        invocations: Arc<Mutex<HashMap<String, Sender<ClientMessage>>>>,
+    ) -> Vec<(String, Sender<ClientMessage>)> {
+        let mut invocations = invocations.lock().unwrap();
+        invocations.drain().collect()
+    }
+}
+
 #[derive(Deserialize)]
-struct MaybeInvocationId {
+struct RoutingData {
     #[serde(rename = "invocationId")]
     pub invocation_id: Option<String>,
+    #[serde(rename = "type")]
+    pub message_type: MessageType,
 }
 
 #[derive(Deserialize, Debug, Clone)]

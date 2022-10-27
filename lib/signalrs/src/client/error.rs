@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use super::messages::ClientMessage;
+use super::{hub::invocation::ExtractionError, messages::ClientMessage};
 
 #[derive(Error, Debug)]
 pub enum SignalRClientError {
@@ -23,6 +23,11 @@ pub enum SignalRClientError {
     ProtocolError { message: String },
     #[error("Invocation finished with error")]
     InvocationError { message: String },
+    #[error("Error during extraction from invocation")]
+    ExtractionError {
+        #[from]
+        source: ExtractionError,
+    },
 }
 
 #[derive(Error, Debug)]

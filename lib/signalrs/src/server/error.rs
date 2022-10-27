@@ -1,8 +1,7 @@
 use thiserror::Error;
 
-use crate::{
-    connection::StreamItemPayload,
-    server::{extract::ExtractionError, response::HubResponseStruct},
+use crate::server::{
+    connection::StreamItemPayload, extract::ExtractionError, response::HubResponseStruct,
 };
 
 #[derive(Error, Debug)]

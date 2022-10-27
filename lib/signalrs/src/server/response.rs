@@ -1,4 +1,4 @@
-use crate::{protocol::*, server::error::InternalCommuncationError};
+use crate::protocol::*;
 use flume::r#async::SendSink;
 use futures::{
     sink::{Sink, SinkExt},
@@ -6,6 +6,8 @@ use futures::{
 };
 use serde::Serialize;
 use std::fmt::Debug;
+
+use super::error::InternalCommuncationError;
 
 #[non_exhaustive]
 #[derive(Debug, Clone)]
