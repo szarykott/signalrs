@@ -1,8 +1,8 @@
-use super::Hub;
-use crate::{
-    error::SignalRError,
-    functions::{Callable, Handler, NonStreamingCallable, StreamingCallable, StreamingHandler},
+use super::functions::{
+    Callable, Handler, NonStreamingCallable, StreamingCallable, StreamingHandler,
 };
+use super::Hub;
+use crate::server::error::SignalRError;
 use futures::Future;
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 

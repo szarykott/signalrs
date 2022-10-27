@@ -8,7 +8,10 @@ use axum::{
 use futures::{future::FutureExt, select, sink::SinkExt, stream::StreamExt};
 use log::*;
 use signalrs::{
-    connection::ConnectionState, hub::Hub, negotiate::NegotiateResponseV0, response::ResponseSink,
+    connection::ConnectionState,
+    hub::Hub,
+    negotiate::NegotiateResponseV0,
+    server::{response::ResponseSink, Server},
 };
 use std::sync::Arc;
 
@@ -30,7 +33,7 @@ async fn negotiate() -> Json<NegotiateResponseV0> {
 
 async fn ws_upgrade_handler(
     ws: WebSocketUpgrade,
-    Extension(invoker): Extension<Arc<Hub>>,
+    Extension(invoker): Extension<Arc<Server>>,
 ) -> impl IntoResponse {
     debug!("websocket upgrade request recieved");
 
@@ -38,7 +41,7 @@ async fn ws_upgrade_handler(
     ws.on_upgrade(f)
 }
 
-async fn ws_handler(socket: WebSocket, invoker: Arc<Hub>) {
+async fn ws_handler(socket: WebSocket, invoker: Arc<Server>) {
     let (mut tx_socket, mut rx_socket) = socket.split();
 
     debug!("performing handshake for a new hub client");

@@ -9,8 +9,12 @@ use futures::{
 use log::LevelFilter;
 use log::*;
 use signalrs::{
-    connection::ConnectionState, error::SignalRError, extract::UploadStream,
-    hub::builder::HubBuilder, invocation, protocol::*, response::ResponseSink,
+    connection::ConnectionState,
+    hub::builder::HubBuilder,
+    protocol::*,
+    server::{
+        error::SignalRError, extract::UploadStream, invocation, response::ResponseSink, Server,
+    },
 };
 use simple_logger::SimpleLogger;
 
@@ -26,11 +30,12 @@ async fn test_add() {
         a + b
     }
 
-    let hub = HubBuilder::new().method("add", add).build();
+    let server: Server = HubBuilder::new().method("add", add).build().into();
     let (tx, rx) = common::create_channels();
     let invocation = Invocation::with_id("123", "add", Some((1i32, 2i32))).to_json();
 
-    hub.invoke_text(invocation, Default::default(), tx)
+    server
+        .invoke_text(invocation, Default::default(), tx)
         .await
         .unwrap();
 
@@ -43,13 +48,15 @@ async fn test_non_blocking() {
         print!("result is {a} + {b} = {0}", a + b)
     }
 
-    let hub = HubBuilder::new()
+    let server: Server = HubBuilder::new()
         .method("non_blocking", non_blocking)
-        .build();
+        .build()
+        .into();
     let (tx, rx) = common::create_channels();
     let invocation = Invocation::without_id("non_blocking", Some((1i32, 2i32))).to_json();
 
-    hub.invoke_text(invocation, Default::default(), tx)
+    server
+        .invoke_text(invocation, Default::default(), tx)
         .await
         .unwrap();
 
@@ -63,9 +70,11 @@ async fn test_single_result_failure() {
         Err(EXPECTED_MESSAGE.to_owned())
     }
 
-    let hub = HubBuilder::new()
+    let hub: Server = HubBuilder::new()
         .method("single_result_failure", single_result_failure)
-        .build();
+        .build()
+        .into();
+
     let (tx, rx) = common::create_channels();
     let invocation =
         Invocation::with_id("123", "single_result_failure", Some((1i32, 2i32))).to_json();
@@ -88,7 +97,7 @@ async fn test_batched() {
             .collect::<Vec<usize>>()
     }
 
-    let hub = HubBuilder::new().method("batched", batched).build();
+    let hub: Server = HubBuilder::new().method("batched", batched).build().into();
     let (tx, rx) = common::create_channels();
     let invocation = Invocation::with_id("123", "batched", Some((5usize,))).to_json();
 
@@ -113,7 +122,10 @@ async fn test_stream() {
         }
     }
 
-    let hub = HubBuilder::new().streaming_method("stream", stream).build();
+    let hub: Server = HubBuilder::new()
+        .streaming_method("stream", stream)
+        .build()
+        .into();
 
     let invocation = StreamInvocation::new("123", "stream", Some((3usize,))).to_json();
 
@@ -143,7 +155,10 @@ async fn test_stream_cancel() {
         }
     }
 
-    let hub = HubBuilder::new().streaming_method("stream", stream).build();
+    let hub: Server = HubBuilder::new()
+        .streaming_method("stream", stream)
+        .build()
+        .into();
     let (tx, rx) = common::create_channels();
     let state: ConnectionState = Default::default();
 
@@ -175,9 +190,10 @@ async fn test_stream_failure() {
         }
     }
 
-    let hub = HubBuilder::new()
+    let hub: Server = HubBuilder::new()
         .streaming_method("stream_failure", stream_failure)
-        .build();
+        .build()
+        .into();
 
     let invocation = StreamInvocation::new("123", "stream_failure", Some((3usize,))).to_json();
 
@@ -210,7 +226,10 @@ async fn test_add_stream() {
         result.into_iter().sum::<i32>()
     }
 
-    let hub = HubBuilder::new().method("add_stream", add_stream).build();
+    let hub: Server = HubBuilder::new()
+        .method("add_stream", add_stream)
+        .build()
+        .into();
     let state: ConnectionState = Default::default();
     let (tx, rx) = common::create_channels();
 

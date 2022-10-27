@@ -3,7 +3,7 @@ use async_stream::stream;
 use axum::{body::Body, http::StatusCode, routing::get_service, Router};
 use futures::{stream::StreamExt, Stream};
 use log::*;
-use signalrs::{extract::UploadStream, hub::builder::HubBuilder};
+use signalrs::{hub::builder::HubBuilder, server::extract::UploadStream};
 use signalrs_axum::hub_routes;
 use simple_logger::SimpleLogger;
 use tower_http::{cors::CorsLayer, services::fs::ServeFile, trace::TraceLayer};

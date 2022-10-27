@@ -7,9 +7,11 @@ use thiserror::Error;
 
 use crate::{
     connection::{ClientSink, StreamItemPayload},
-    error::SignalRError,
-    invocation::{ArgumentsLeft, HubInvocation, Payload},
     protocol::{Arguments, ClientStreams},
+    server::{
+        error::SignalRError,
+        invocation::{ArgumentsLeft, HubInvocation, Payload},
+    },
 };
 
 pub trait FromInvocation

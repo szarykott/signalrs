@@ -1,6 +1,9 @@
 use thiserror::Error;
 
-use crate::{connection::StreamItemPayload, extract::ExtractionError, response::HubResponseStruct};
+use crate::{
+    connection::StreamItemPayload,
+    server::{extract::ExtractionError, response::HubResponseStruct},
+};
 
 #[derive(Error, Debug)]
 pub enum SignalRError {

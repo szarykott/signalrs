@@ -2,7 +2,7 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::error::SignalRError;
+use crate::server::error::SignalRError;
 
 pub(crate) use self::{
     inflight_invocations::InflightInvocations,

@@ -14,7 +14,7 @@ use signalrs::{
     connection::ConnectionState,
     hub::{builder::HubBuilder, Hub},
     protocol::*,
-    response::ResponseSink,
+    server::{response::ResponseSink, Server},
 };
 
 mod common;
@@ -104,7 +104,7 @@ fn get_wired_client(
     hub_builder: HubBuilder,
 ) -> SignalRClient<ClientOutputWrapper<ClientMessage>, RecvStream<'static, ClientMessage>> {
     let (hub_tx, hub_rx) = common::create_channels();
-    let hub = hub_builder.build();
+    let hub: Server = hub_builder.build().into();
 
     let (client, client_tx, client_rx) = build_client();
 

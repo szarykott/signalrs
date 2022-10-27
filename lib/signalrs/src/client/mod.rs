@@ -122,7 +122,7 @@ where
         let serialized = self.encoding.serialize(&invocation)?;
 
         self.sender
-            .actually_send(serialized, stream_ids.into_iter().zip(self.state.streams).collect())
+            .send(serialized, stream_ids.into_iter().zip(self.state.streams).collect())
             .await
     }
 
@@ -148,7 +148,7 @@ where
 
         let send_result = self
             .sender
-            .actually_send(serialized, stream_ids.into_iter().zip(self.state.streams).collect())
+            .send(serialized, stream_ids.into_iter().zip(self.state.streams).collect())
             .await;
 
         if let e @ Err(_) = send_result {
@@ -188,7 +188,7 @@ where
 
         let result = self
             .sender
-            .actually_send(serialized, stream_ids.into_iter().zip(self.state.streams).collect())
+            .send(serialized, stream_ids.into_iter().zip(self.state.streams).collect())
             .await;
 
         if let e @ Err(_) = result {

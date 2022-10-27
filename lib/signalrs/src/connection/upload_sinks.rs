@@ -7,7 +7,7 @@ use flume::r#async::SendSink;
 use futures::{Sink, SinkExt};
 use serde_json::Value;
 
-use crate::error::InternalCommuncationError;
+use crate::server::error::InternalCommuncationError;
 
 use super::StreamItemPayload;
 

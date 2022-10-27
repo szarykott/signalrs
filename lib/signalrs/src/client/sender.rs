@@ -19,7 +19,7 @@ impl<S> SignalRClientSender<S>
 where
     S: Sink<ClientMessage, Error = SignalRClientError> + Unpin + Clone,
 {
-    pub(super) async fn actually_send(
+    pub(super) async fn send(
         &mut self,
         serialized: ClientMessage,
         streams: Vec<(
@@ -36,7 +36,7 @@ where
                 let sink = self.sink.clone();
                 let encoding = self.encoding;
                 let future = async move {
-                    match Self::stream_it(sink, id.as_str(), encoding, stream).await {
+                    match Self::forward(sink, id.as_str(), encoding, stream).await {
                         Ok(()) => Ok(()),
                         Err(error) => Err((id, error)),
                     }
@@ -58,7 +58,7 @@ where
         Ok(())
     }
 
-    async fn stream_it(
+    async fn forward(
         mut sink: S,
         invocation_id: &str,
         encoding: MessageEncoding,

@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use futures::Future;
 
-use crate::{error::SignalRError, invocation::HubInvocation};
+use crate::server::{error::SignalRError, invocation::HubInvocation};
 
 use super::{Handler, StreamingHandler};
 

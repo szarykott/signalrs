@@ -1,4 +1,4 @@
-use crate::{error::InternalCommuncationError, protocol::*};
+use crate::{protocol::*, server::error::InternalCommuncationError};
 use flume::r#async::SendSink;
 use futures::{
     sink::{Sink, SinkExt},
