@@ -4,6 +4,7 @@ mod messages;
 mod receiver;
 mod sender;
 
+use self::hub::Hub;
 pub use self::{
     error::{ChannelSendError, SignalRClientError},
     messages::ClientMessage,
@@ -26,7 +27,7 @@ pub struct SignalRClient<Sink, Stream> {
     encoding: MessageEncoding,
 }
 
-pub fn new_text_client<Out, In>(output: Out, input: In) -> SignalRClient<Out, In>
+pub fn new_text_client<Out, In>(output: Out, input: In, hub: Option<Hub>) -> SignalRClient<Out, In>
 where
     Out: Sink<ClientMessage, Error = SignalRClientError> + Unpin + Clone,
     In: Stream<Item = ClientMessage> + Send + Unpin + 'static,
@@ -35,6 +36,7 @@ where
         invocations: Arc::new(Mutex::new(HashMap::new())),
         incoming_messages: Some(input),
         encoding: MessageEncoding::Json,
+        hub,
     };
 
     receiver.start_receiver_loop();

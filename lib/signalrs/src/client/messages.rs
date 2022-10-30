@@ -27,9 +27,15 @@ impl ClientMessage {
         }
     }
 
-    pub fn unwrap_text(self) -> String {
+    pub fn get_encoding(&self) -> MessageEncoding {
         match self {
-            ClientMessage::Json(value) => value,
+            ClientMessage::Json(_) => MessageEncoding::Json,
+        }
+    }
+
+    pub fn unwrap_text(&self) -> &str {
+        match self {
+            ClientMessage::Json(value) => &value,
         }
     }
 }

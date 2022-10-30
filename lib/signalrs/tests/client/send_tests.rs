@@ -33,7 +33,8 @@ fn build_client() -> (
     let client_output_sender =
         ClientOutputWrapper::<ClientMessage>::new_text(client_output_sender.into_sink());
 
-    let client = client::new_text_client(client_output_sender, client_input_receiver.into_stream());
+    let client =
+        client::new_text_client(client_output_sender, client_input_receiver.into_stream(), None);
 
     (client, client_output_receiver)
 }

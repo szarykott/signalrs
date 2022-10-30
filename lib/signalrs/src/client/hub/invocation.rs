@@ -1,6 +1,29 @@
 use thiserror::Error;
 
-pub struct HubInvocation;
+use crate::client::ClientMessage;
+
+pub struct HubInvocation {
+    pub(crate) message: ClientMessage,
+    pub(crate) state: InvocationState,
+}
+
+#[derive(Default)]
+pub struct InvocationState {
+    pub(crate) arguments: Option<ArgumentsLeft>,
+}
+
+pub enum ArgumentsLeft {
+    Text(std::vec::IntoIter<serde_json::Value>),
+}
+
+impl HubInvocation {
+    pub fn new(message: ClientMessage) -> Self {
+        HubInvocation {
+            message,
+            state: Default::default(),
+        }
+    }
+}
 
 pub trait FromInvocation
 where

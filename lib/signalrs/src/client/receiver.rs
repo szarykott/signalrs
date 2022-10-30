@@ -8,6 +8,7 @@ use std::{
 };
 
 use super::{
+    hub::Hub,
     messages::{ClientMessage, MessageEncoding},
     ChannelSendError, SignalRClientError,
 };
@@ -17,12 +18,14 @@ pub struct SignalRClientReceiver<S> {
     pub(super) incoming_messages: Option<S>,
     pub(super) invocations: Arc<Mutex<HashMap<String, Sender<ClientMessage>>>>,
     pub(super) encoding: MessageEncoding,
+    pub(super) hub: Option<Hub>,
 }
 
 struct ReceiverLooper<S> {
     pub(super) incoming_messages: S,
     pub(super) invocations: Arc<Mutex<HashMap<String, Sender<ClientMessage>>>>,
     pub(super) encoding: MessageEncoding,
+    pub(super) hub: Hub,
 }
 
 impl<S> SignalRClientReceiver<S>
@@ -165,6 +168,7 @@ where
     pub(super) fn start_receiver_loop(&mut self) {
         let invocations = self.invocations.clone();
         let encoding = self.encoding;
+        let hub = self.hub.take().unwrap_or_default();
         let incoming = self
             .incoming_messages
             .take()
@@ -175,16 +179,10 @@ where
                 encoding,
                 invocations,
                 incoming_messages: incoming,
+                hub,
             }
             .receiver_loop(),
         );
-    }
-
-    fn drain_current_invocations(
-        invocations: Arc<Mutex<HashMap<String, Sender<ClientMessage>>>>,
-    ) -> Vec<(String, Sender<ClientMessage>)> {
-        let mut invocations = invocations.lock().unwrap();
-        invocations.drain().collect()
     }
 
     fn insert_invocation(&self, id: String, sender: Sender<ClientMessage>) {
@@ -210,9 +208,11 @@ where
                     message_type,
                 }) => {
                     match message_type {
-                        MessageType::Invocation
-                        | MessageType::StreamInvocation
-                        | MessageType::CancelInvocation => todo!(),
+                        MessageType::Invocation => {
+                            if let Err(e) = self.hub.call(next) {
+                                error!("{}", e); // FIXME: Forward
+                            }
+                        }
                         MessageType::Completion | MessageType::StreamItem => {
                             if let Err(e) =
                                 self.route_message_to_listener(invocation_id, next).await
@@ -220,6 +220,7 @@ where
                                 error!("{}", e); // FIXME: Forward
                             }
                         }
+                        MessageType::StreamInvocation | MessageType::CancelInvocation => todo!(),
                         MessageType::Ping => { /* oh, well */ }
                         MessageType::Close => todo!(),
                         MessageType::Other => { /* this is unexpcted */ }

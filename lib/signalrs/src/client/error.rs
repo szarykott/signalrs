@@ -28,6 +28,8 @@ pub enum SignalRClientError {
         #[from]
         source: ExtractionError,
     },
+    #[error("Hub error occured")]
+    HubError(String),
 }
 
 #[derive(Error, Debug)]

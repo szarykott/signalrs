@@ -66,7 +66,8 @@ pub trait ReceiverExt {
 
 impl ReceiverExt for Receiver<ClientMessage> {
     fn next_json_value(&self) -> serde_json::Value {
-        let text = self.recv().unwrap().unwrap_text();
-        serde_json::Value::from_str(text.as_str()).unwrap()
+        let message = self.recv().unwrap();
+        let text = message.unwrap_text();
+        serde_json::Value::from_str(text).unwrap()
     }
 }
