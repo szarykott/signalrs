@@ -1,11 +1,14 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize)]
+pub const WebSocketTransport: &str = "WebSocket";
+pub const TextTransportFormat: &str = "Text";
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NegotiateResponseV0 {
-    connection_id: String,
-    negotiate_version: u8,
-    available_transports: Vec<TransportSpec>,
+    pub connection_id: String,
+    pub negotiate_version: u8,
+    pub available_transports: Vec<TransportSpec>,
 }
 
 impl NegotiateResponseV0 {
@@ -21,9 +24,9 @@ impl NegotiateResponseV0 {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TransportSpec {
-    transport: String,
-    transfer_formats: Vec<String>,
+    pub transport: String,
+    pub transfer_formats: Vec<String>,
 }

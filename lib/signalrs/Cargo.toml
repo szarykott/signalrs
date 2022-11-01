@@ -18,7 +18,8 @@ serde_repr = "0.1"
 thiserror = "1.0.31"
 tokio = {version = "1", features = ["full"]}
 tokio-util = "0.7.3"
-
+reqwest = "0.11"
+tokio-tungstenite = "0.17"
 [dependencies.uuid]
 features = [
   "v4", # Lets you generate random UUIDs

@@ -1,3 +1,4 @@
+mod builder;
 mod error;
 mod hub;
 mod messages;
@@ -29,7 +30,7 @@ pub struct SignalRClient<Sink, Stream> {
 
 pub fn new_text_client<Out, In>(output: Out, input: In, hub: Option<Hub>) -> SignalRClient<Out, In>
 where
-    Out: Sink<ClientMessage, Error = SignalRClientError> + Unpin + Clone,
+    Out: Sink<ClientMessage, Error = SignalRClientError> + Unpin,
     In: Stream<Item = ClientMessage> + Send + Unpin + 'static,
 {
     let mut receiver = SignalRClientReceiver {
