@@ -1,10 +1,8 @@
+use super::{hub::Hub, messages::MessageEncoding};
 use crate::negotiate::NegotiateResponseV0;
-
-use super::{
-    hub::Hub, messages::MessageEncoding, ClientMessage, SignalRClient, SignalRClientError,
-};
-use futures::{Sink, Stream};
+use futures::{SinkExt, StreamExt};
 use thiserror::Error;
+use tokio_tungstenite::tungstenite;
 
 pub struct ClientBuilder {
     url: String,
@@ -30,6 +28,13 @@ pub enum BuilderError {
     Negotiate {
         #[from]
         source: NegotiateError,
+    },
+    #[error("invalid {0} url")]
+    Url(String),
+    #[error("websocket error")]
+    Websocket {
+        #[from]
+        source: tungstenite::Error,
     },
 }
 
@@ -74,7 +79,9 @@ impl ClientBuilder {
             todo!() // return error
         }
 
-        let conn = tokio_tungstenite::connect_async(&self.url).await;
+        let (websocket, _) = tokio_tungstenite::connect_async(to_ws_scheme(&self.url)?).await?;
+
+        let (tx, rx) = websocket.split();
 
         todo!()
     }
@@ -99,6 +106,16 @@ impl ClientBuilder {
         let response: NegotiateResponseV0 = serde_json::from_str(&http_response.text().await?)?;
 
         Ok(response)
+    }
+}
+
+fn to_ws_scheme(url: &str) -> Result<String, BuilderError> {
+    if url.starts_with("https://") {
+        Ok(url.replace("https://", "wss://"))
+    } else if url.starts_with("http://") {
+        Ok(url.replace("http://", "ws://"))
+    } else {
+        Err(BuilderError::Url(url.to_owned()))
     }
 }
 

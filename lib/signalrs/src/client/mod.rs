@@ -1,3 +1,4 @@
+mod adapter;
 mod builder;
 mod error;
 mod hub;
