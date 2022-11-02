@@ -1,4 +1,4 @@
-use super::{hub::Hub, messages::MessageEncoding};
+use super::{hub::Hub, messages::MessageEncoding, websocket};
 use crate::negotiate::NegotiateResponseV0;
 use futures::{SinkExt, StreamExt};
 use thiserror::Error;
@@ -80,8 +80,6 @@ impl ClientBuilder {
         }
 
         let (websocket, _) = tokio_tungstenite::connect_async(to_ws_scheme(&self.url)?).await?;
-
-        let (tx, rx) = websocket.split();
 
         todo!()
     }

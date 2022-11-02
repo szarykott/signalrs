@@ -30,6 +30,11 @@ pub enum SignalRClientError {
     },
     #[error("Hub error occured")]
     HubError(String),
+    #[error("WebSocket error")]
+    WebSocketError {
+        #[from]
+        source: tokio_tungstenite::tungstenite::Error,
+    },
 }
 
 #[derive(Error, Debug)]

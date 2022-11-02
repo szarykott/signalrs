@@ -1,10 +1,11 @@
-mod adapter;
 mod builder;
+mod client2;
 mod error;
 mod hub;
 mod messages;
 mod receiver;
 mod sender;
+mod websocket;
 
 use self::hub::Hub;
 pub use self::{
@@ -112,12 +113,10 @@ where
 
     /// Invokes a hub method on the server without waiting for a response
     pub async fn send(self) -> Result<(), SignalRClientError> {
-        let mut invocation = Invocation::new_non_blocking(
-            self.state.method,
-            Self::args_as_option(self.state.arguments),
-        );
+        let mut invocation =
+            Invocation::new_non_blocking(self.state.method, args_as_option(self.state.arguments));
 
-        let stream_ids = Self::get_stream_ids(self.state.streams.len());
+        let stream_ids = get_stream_ids(self.state.streams.len());
         invocation.with_streams(stream_ids.clone());
 
         let serialized = self.encoding.serialize(&invocation)?;
@@ -132,15 +131,13 @@ where
     where
         T: DeserializeOwned,
     {
-        let mut invocation = Invocation::new_non_blocking(
-            self.state.method,
-            Self::args_as_option(self.state.arguments),
-        );
+        let mut invocation =
+            Invocation::new_non_blocking(self.state.method, args_as_option(self.state.arguments));
 
         let invocation_id = Uuid::new_v4().to_string();
         invocation.add_invocation_id(invocation_id.clone());
 
-        let stream_ids = Self::get_stream_ids(self.state.streams.len());
+        let stream_ids = get_stream_ids(self.state.streams.len());
         invocation.with_streams(stream_ids.clone());
 
         let serialized = self.encoding.serialize(&invocation)?;
@@ -177,10 +174,10 @@ where
         let mut invocation = StreamInvocation::new(
             invocation_id.clone(),
             self.state.method,
-            Self::args_as_option(self.state.arguments),
+            args_as_option(self.state.arguments),
         );
 
-        let stream_ids = Self::get_stream_ids(self.state.streams.len());
+        let stream_ids = get_stream_ids(self.state.streams.len());
         invocation.with_streams(stream_ids.clone());
 
         let serialized = self.encoding.serialize(&invocation)?;
@@ -199,23 +196,23 @@ where
 
         self.receiver.receive_stream::<T>(invocation_id, rx).await
     }
+}
 
-    fn args_as_option(arguments: Vec<serde_json::Value>) -> Option<Vec<serde_json::Value>> {
-        if arguments.is_empty() {
-            None
-        } else {
-            Some(arguments)
+fn args_as_option(arguments: Vec<serde_json::Value>) -> Option<Vec<serde_json::Value>> {
+    if arguments.is_empty() {
+        None
+    } else {
+        Some(arguments)
+    }
+}
+
+fn get_stream_ids(num_streams: usize) -> Vec<String> {
+    let mut stream_ids = Vec::new();
+    if num_streams > 0 {
+        for _ in 0..num_streams {
+            stream_ids.push(Uuid::new_v4().to_string());
         }
     }
 
-    fn get_stream_ids(num_streams: usize) -> Vec<String> {
-        let mut stream_ids = Vec::new();
-        if num_streams > 0 {
-            for _ in 0..num_streams {
-                stream_ids.push(Uuid::new_v4().to_string());
-            }
-        }
-
-        stream_ids
-    }
+    stream_ids
 }
