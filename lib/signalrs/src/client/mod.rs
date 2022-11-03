@@ -4,6 +4,7 @@ mod error;
 mod hub;
 mod messages;
 mod receiver;
+mod send_builder;
 mod sender;
 mod websocket;
 
@@ -114,7 +115,7 @@ where
     /// Invokes a hub method on the server without waiting for a response
     pub async fn send(self) -> Result<(), SignalRClientError> {
         let mut invocation =
-            Invocation::new_non_blocking(self.state.method, args_as_option(self.state.arguments));
+            Invocation::non_blocking(self.state.method, args_as_option(self.state.arguments));
 
         let stream_ids = get_stream_ids(self.state.streams.len());
         invocation.with_streams(stream_ids.clone());
@@ -132,10 +133,10 @@ where
         T: DeserializeOwned,
     {
         let mut invocation =
-            Invocation::new_non_blocking(self.state.method, args_as_option(self.state.arguments));
+            Invocation::non_blocking(self.state.method, args_as_option(self.state.arguments));
 
         let invocation_id = Uuid::new_v4().to_string();
-        invocation.add_invocation_id(invocation_id.clone());
+        invocation.with_invocation_id(invocation_id.clone());
 
         let stream_ids = get_stream_ids(self.state.streams.len());
         invocation.with_streams(stream_ids.clone());

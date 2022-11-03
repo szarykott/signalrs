@@ -95,7 +95,7 @@ pub struct Invocation<A> {
 }
 
 impl<A> Invocation<A> {
-    pub fn new_non_blocking(target: impl Into<String>, arguments: Option<A>) -> Self {
+    pub fn non_blocking(target: impl Into<String>, arguments: Option<A>) -> Self {
         Invocation {
             r#type: MessageType::Invocation,
             headers: None,
@@ -106,7 +106,7 @@ impl<A> Invocation<A> {
         }
     }
 
-    pub fn add_invocation_id(&mut self, invocation_id: impl ToString) -> &mut Self {
+    pub fn with_invocation_id(&mut self, invocation_id: impl ToString) -> &mut Self {
         self.invocation_id = Some(invocation_id.to_string());
         self
     }

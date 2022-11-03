@@ -1,6 +1,7 @@
 use super::{hub::Hub, ChannelSendError, ClientMessage, SignalRClientError};
 use crate::protocol::MessageType;
 use flume::Sender;
+use futures::{stream::FuturesUnordered, Future, Stream, StreamExt};
 use log::*;
 use serde::Deserialize;
 use std::{collections::HashMap, sync::Arc};
@@ -152,11 +153,46 @@ impl SignalRClient {
     //     todo!()
     // }
 
-    async fn send_internal(&self, message: ClientMessage) -> Result<(), SignalRClientError> {
+    pub(crate) async fn send_message_internal(
+        &self,
+        message: ClientMessage,
+    ) -> Result<(), SignalRClientError> {
         self.transport_handle
             .send_async(message)
             .await
             .map_err(|e| -> ChannelSendError { e.into() })
             .map_err(|e| e.into())
+    }
+
+    pub(crate) async fn send_streams_internal(
+        &self,
+        streams: Vec<Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>>,
+    ) -> Result<(), SignalRClientError> {
+        let mut futures = FuturesUnordered::new();
+        for stream in streams.into_iter() {
+            futures.push(self.send_stream_internal(stream));
+        }
+
+        while let Some(result) = futures.next().await {
+            result?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) async fn send_stream_internal(
+        &self,
+        mut stream: Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>,
+    ) -> Result<(), SignalRClientError> {
+        while let Some(item) = stream.next().await {
+            let item = item?;
+            self.transport_handle
+                .send_async(item)
+                .await
+                .map_err(|e| -> ChannelSendError { e.into() })
+                .map_err(|e| -> SignalRClientError { e.into() })?;
+        }
+
+        Ok(())
     }
 }
