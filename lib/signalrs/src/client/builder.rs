@@ -1,6 +1,11 @@
-use super::{hub::Hub, messages::MessageEncoding, websocket};
+use super::{
+    client2::{self, SignalRClient},
+    hub::Hub,
+    messages::MessageEncoding,
+    websocket, ClientMessage,
+};
 use crate::negotiate::NegotiateResponseV0;
-use futures::{SinkExt, StreamExt};
+use futures::SinkExt;
 use thiserror::Error;
 use tokio_tungstenite::tungstenite;
 
@@ -72,16 +77,22 @@ impl ClientBuilder {
         self
     }
 
-    pub async fn build(self) -> Result<(), BuilderError> {
+    pub async fn build(self) -> Result<SignalRClient, BuilderError> {
         let negotiate_response = self.get_server_supported_features().await?;
 
         if !can_connect(negotiate_response) {
             todo!() // return error
         }
 
-        let (websocket, _) = tokio_tungstenite::connect_async(to_ws_scheme(&self.url)?).await?;
+        let (ws_handle, _) = tokio_tungstenite::connect_async(to_ws_scheme(&self.url)?).await?;
+        let (tx, rx) = flume::bounded::<ClientMessage>(1);
 
-        todo!()
+        let (transport_handle, client) = client2::new_client(tx, self.hub);
+        let transport_future = websocket::websocket_hub(ws_handle, transport_handle, rx);
+
+        tokio::spawn(transport_future);
+
+        Ok(client)
     }
 
     async fn get_server_supported_features(&self) -> Result<NegotiateResponseV0, NegotiateError> {

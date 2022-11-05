@@ -1,17 +1,27 @@
 use super::{hub::Hub, ChannelSendError, ClientMessage, SignalRClientError};
 use crate::protocol::MessageType;
 use flume::Sender;
-use futures::{stream::FuturesUnordered, Future, Stream, StreamExt};
+use futures::{stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
-use serde::Deserialize;
+use serde::{de::DeserializeOwned, Deserialize};
 use std::{collections::HashMap, sync::Arc};
+use tokio::sync::oneshot;
 
 pub struct SignalRClient {
-    invocations:
-        Arc<std::sync::Mutex<HashMap<String, tokio::sync::oneshot::Sender<ClientMessage>>>>,
-    stream_invocations: Arc<std::sync::Mutex<HashMap<String, Sender<ClientMessage>>>>,
-    hub: Option<Hub>,
+    invocations: Invocations,
+    // hub: Option<Hub>,
     transport_handle: Sender<ClientMessage>,
+}
+
+pub(crate) struct TransportClientHandle {
+    invocations: Invocations,
+    hub: Option<Hub>,
+}
+
+#[derive(Default, Clone)]
+pub(crate) struct Invocations {
+    invocations: Arc<std::sync::Mutex<HashMap<String, oneshot::Sender<ClientMessage>>>>,
+    stream_invocations: Arc<std::sync::Mutex<HashMap<String, Sender<ClientMessage>>>>,
 }
 
 #[derive(Deserialize)]
@@ -27,7 +37,31 @@ pub enum Command {
     Close,
 }
 
-impl SignalRClient {
+pub struct ResponseStream<'a, T> {
+    items: Box<dyn Stream<Item = Result<T, SignalRClientError>> + Unpin>,
+    invocation_id: String,
+    client: &'a SignalRClient,
+}
+
+pub(crate) fn new_client(
+    transport_handle: Sender<ClientMessage>,
+    hub: Option<Hub>,
+) -> (TransportClientHandle, SignalRClient) {
+    let invocations = Invocations::default();
+    let transport_client_handle = TransportClientHandle::new(&invocations, hub);
+    let client = SignalRClient::new(&invocations, transport_handle);
+
+    (transport_client_handle, client)
+}
+
+impl TransportClientHandle {
+    pub(crate) fn new(invocations: &Invocations, hub: Option<Hub>) -> Self {
+        TransportClientHandle {
+            invocations: invocations.to_owned(),
+            hub,
+        }
+    }
+
     pub(crate) fn receive_message(
         &self,
         message: ClientMessage,
@@ -69,15 +103,12 @@ impl SignalRClient {
             message: "completion without invocation id".into(),
         })?;
 
-        let sender = {
-            let mut invocations = self.invocations.lock().unwrap(); // TODO: can it be posioned, use parking_lot?
-            invocations.remove(&invocation_id)
-        };
+        let sender = self.invocations.remove_invocation(&invocation_id);
 
         if let Some(sender) = sender {
             if let Err(_) = sender.send(message) {
                 warn!("received completion for a dropped invocation");
-                self.remove_invocation(&invocation_id);
+                self.invocations.remove_invocation(&invocation_id);
             }
         } else {
             warn!("received completion with unknown id");
@@ -96,7 +127,7 @@ impl SignalRClient {
         })?;
 
         let sender = {
-            let invocations = self.stream_invocations.lock().unwrap(); // TODO: can it be posioned, use parking_lot?
+            let invocations = self.invocations.stream_invocations.lock().unwrap(); // TODO: can it be posioned, use parking_lot?
             invocations
                 .get(&invocation_id)
                 .and_then(|sender| Some(sender.clone()))
@@ -105,7 +136,7 @@ impl SignalRClient {
         if let Some(sender) = sender {
             if let Err(_) = sender.send(message) {
                 warn!("received stream item for a dropped invocation");
-                self.remove_stream_invocation(&invocation_id);
+                self.invocations.remove_stream_invocation(&invocation_id);
             }
         } else {
             warn!("received stream item with unknown id");
@@ -123,37 +154,81 @@ impl SignalRClient {
         info!("close received");
         Ok(Command::Close)
     }
+}
 
-    fn insert_invocation(&self, id: String, sender: tokio::sync::oneshot::Sender<ClientMessage>) {
-        let mut invocations = self.invocations.lock().unwrap();
-        (*invocations).insert(id, sender);
+impl SignalRClient {
+    pub(crate) fn new(invocations: &Invocations, transport_handle: Sender<ClientMessage>) -> Self {
+        SignalRClient {
+            invocations: invocations.to_owned(),
+            transport_handle,
+        }
     }
 
-    pub fn remove_invocation(&self, id: &String) {
-        let mut invocations = self.invocations.lock().unwrap();
-        (*invocations).remove(id);
+    pub(crate) async fn invoke<T>(
+        &self,
+        invocation_id: String,
+        message: ClientMessage,
+        streams: Vec<Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>>,
+    ) -> Result<T, SignalRClientError>
+    where
+        T: DeserializeOwned,
+    {
+        let (tx, rx) = oneshot::channel::<ClientMessage>();
+        self.invocations
+            .insert_invocation(invocation_id.to_owned(), tx);
+
+        if let Err(error) = self.send_all(message, streams).await {
+            self.invocations.remove_invocation(&invocation_id);
+            return Err(error);
+        }
+
+        let result = rx
+            .await
+            .map_err(|error| error.into())
+            .and_then(|message| message.deserialize());
+
+        self.invocations.remove_invocation(&invocation_id);
+
+        result
     }
 
-    pub fn remove_stream_invocation(&self, id: &String) {
-        let mut invocations = self.stream_invocations.lock().unwrap();
-        (*invocations).remove(id);
+    pub(crate) async fn invoke_stream<'a, T>(
+        &'a self,
+        invocation_id: String,
+        message: ClientMessage,
+        streams: Vec<Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>>,
+    ) -> Result<ResponseStream<'a, T>, SignalRClientError>
+    where
+        T: DeserializeOwned,
+    {
+        let (tx, rx) = flume::bounded::<ClientMessage>(100);
+        self.invocations
+            .insert_stream_invocation(invocation_id.to_owned(), tx);
+
+        if let Err(error) = self.send_all(message, streams).await {
+            self.invocations.remove_stream_invocation(&invocation_id);
+            return Err(error);
+        }
+
+        let response_stream = ResponseStream {
+            items: Box::new(rx.into_stream().map(|item| item.deserialize::<T>())),
+            invocation_id,
+            client: &self,
+        };
+
+        Ok(response_stream)
     }
 
-    async fn send(self) -> Result<(), SignalRClientError> {
-        todo!()
+    async fn send_all(
+        &self,
+        message: ClientMessage,
+        streams: Vec<Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>>,
+    ) -> Result<(), SignalRClientError> {
+        self.send_message(message).await?;
+        self.send_streams(streams).await
     }
 
-    async fn invoke<T>(self) -> Result<T, SignalRClientError> {
-        todo!()
-    }
-
-    // async fn invoke_stream<T>(
-    //     self,
-    // ) -> Result<impl Stream<Item = Result<T, SignalRClientError>>, SignalRClientError> {
-    //     todo!()
-    // }
-
-    pub(crate) async fn send_message_internal(
+    pub(crate) async fn send_message(
         &self,
         message: ClientMessage,
     ) -> Result<(), SignalRClientError> {
@@ -164,7 +239,7 @@ impl SignalRClient {
             .map_err(|e| e.into())
     }
 
-    pub(crate) async fn send_streams_internal(
+    pub(crate) async fn send_streams(
         &self,
         streams: Vec<Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>>,
     ) -> Result<(), SignalRClientError> {
@@ -180,7 +255,7 @@ impl SignalRClient {
         Ok(())
     }
 
-    pub(crate) async fn send_stream_internal(
+    async fn send_stream_internal(
         &self,
         mut stream: Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>,
     ) -> Result<(), SignalRClientError> {
@@ -194,5 +269,46 @@ impl SignalRClient {
         }
 
         Ok(())
+    }
+}
+
+impl Invocations {
+    fn insert_invocation(&self, id: String, sender: oneshot::Sender<ClientMessage>) {
+        let mut invocations = self.invocations.lock().unwrap();
+        (*invocations).insert(id, sender);
+    }
+
+    fn insert_stream_invocation(&self, id: String, sender: flume::Sender<ClientMessage>) {
+        let mut invocations = self.stream_invocations.lock().unwrap();
+        (*invocations).insert(id, sender);
+    }
+
+    pub fn remove_invocation(&self, id: &String) -> Option<oneshot::Sender<ClientMessage>> {
+        let mut invocations = self.invocations.lock().unwrap();
+        (*invocations).remove(id)
+    }
+
+    pub fn remove_stream_invocation(&self, id: &String) {
+        let mut invocations = self.stream_invocations.lock().unwrap();
+        (*invocations).remove(id);
+    }
+}
+
+impl<'a, T> Drop for ResponseStream<'a, T> {
+    fn drop(&mut self) {
+        self.client
+            .invocations
+            .remove_stream_invocation(&self.invocation_id);
+    }
+}
+
+impl<'a, T> Stream for ResponseStream<'a, T> {
+    type Item = Result<T, SignalRClientError>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        self.items.poll_next_unpin(cx)
     }
 }

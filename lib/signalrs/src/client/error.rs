@@ -35,6 +35,11 @@ pub enum SignalRClientError {
         #[from]
         source: tokio_tungstenite::tungstenite::Error,
     },
+    #[error("tokio oneshot error")]
+    TokioOneshotError {
+        #[from]
+        source: tokio::sync::oneshot::error::RecvError,
+    },
 }
 
 #[derive(Error, Debug)]

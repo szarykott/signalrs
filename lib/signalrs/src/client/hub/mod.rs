@@ -12,13 +12,13 @@ use super::{ClientMessage, SignalRClientError};
 
 #[derive(Default)]
 pub struct Hub {
-    methods: HashMap<String, Box<dyn HubMethod + Send + 'static>>,
+    methods: HashMap<String, Box<dyn HubMethod + Send + Sync + 'static>>,
 }
 
 impl Hub {
     pub fn method<M>(&mut self, name: impl ToString, method: M)
     where
-        M: HubMethod + Send + 'static,
+        M: HubMethod + Send + Sync + 'static,
     {
         if let Some(_) = self.methods.insert(name.to_string(), Box::new(method)) {
             warn!("overwritten method {}", name.to_string())

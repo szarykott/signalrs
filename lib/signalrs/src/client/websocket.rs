@@ -1,4 +1,11 @@
-use super::ClientMessage;
+use std::fmt::Display;
+
+use crate::client::{client2::Command, SignalRClientError};
+
+use super::{
+    client2::{SignalRClient, TransportClientHandle},
+    ClientMessage,
+};
 use futures::{select, SinkExt, Stream, StreamExt};
 use log::error;
 use tokio::net::TcpStream;
@@ -7,12 +14,12 @@ use tokio_tungstenite::{
     MaybeTlsStream, WebSocketStream,
 };
 
-async fn websocket_hub<F1: Fn(ClientMessage), F2: Stream<Item = ClientMessage> + Unpin>(
+pub(crate) async fn websocket_hub<'a>(
     mut websocket: WebSocketStream<MaybeTlsStream<TcpStream>>,
-    mut message_received_callback: F1,
-    messages_to_send: F2,
+    client: TransportClientHandle,
+    messages_to_send: flume::Receiver<ClientMessage>,
 ) {
-    let mut messages_to_send = messages_to_send.fuse();
+    let mut messages_to_send = messages_to_send.into_stream().fuse();
     loop {
         select! {
             to_send = messages_to_send.next() => {
@@ -29,7 +36,11 @@ async fn websocket_hub<F1: Fn(ClientMessage), F2: Stream<Item = ClientMessage> +
 
                 match received.unwrap() {
                     Ok(message) => {
-                        incoming_message(&mut websocket, message, &mut message_received_callback).await
+                        match incoming_message(&mut websocket, message, &client).await {
+                            Ok(Command::Close) => break,
+                            Ok(Command::None) => {  },
+                            Err(error) => incoming_message_error(error)
+                        };
                     }
                     Err(error) => incoming_message_error(error),
                 }
@@ -51,19 +62,31 @@ async fn websocket_hub<F1: Fn(ClientMessage), F2: Stream<Item = ClientMessage> +
         }
     }
 
-    async fn incoming_message<F1: Fn(ClientMessage)>(
+    async fn incoming_message<'a>(
         websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
         message: Message,
-        message_received_callback: &mut F1,
-    ) {
-        match message {
-            Message::Text(text) => message_received_callback(ClientMessage::Json(text)),
-            Message::Binary(bytes) => message_received_callback(ClientMessage::Binary(bytes)),
-            Message::Ping(payload) => send_pong(websocket, payload).await,
-            Message::Pong(_) => { /* ignore for now, need to track time */ }
-            Message::Close(_) => { /* probably need to send something, ignore for now */ }
-            Message::Frame(_) => { /* apparently impossible to get while reading */ }
-        }
+        client: &'a TransportClientHandle,
+    ) -> Result<Command, SignalRClientError> {
+        return match message {
+            Message::Text(text) => client.receive_message(ClientMessage::Json(text)),
+            Message::Binary(bytes) => client.receive_message(ClientMessage::Binary(bytes)),
+            Message::Ping(payload) => {
+                send_pong(websocket, payload).await;
+                return Ok(Command::None);
+            }
+            Message::Pong(_) => {
+                /* ignore for now, need to track time */
+                return Ok(Command::None);
+            }
+            Message::Close(_) => {
+                /* probably need to send something, ignore for now */
+                return Ok(Command::Close);
+            }
+            Message::Frame(_) => {
+                /* apparently impossible to get while reading */
+                return Ok(Command::None);
+            }
+        };
 
         async fn send_pong(
             websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
@@ -75,7 +98,7 @@ async fn websocket_hub<F1: Fn(ClientMessage), F2: Stream<Item = ClientMessage> +
         }
     }
 
-    fn incoming_message_error(error: tungstenite::Error) {
+    fn incoming_message_error(error: impl Display) {
         error!("{}", error)
     }
 }

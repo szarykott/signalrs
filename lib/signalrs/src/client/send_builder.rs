@@ -4,8 +4,8 @@ use crate::{
 };
 
 use super::{
-    client2::SignalRClient, ClientMessage, IntoInvocationPart, InvocationPart, MessageEncoding,
-    SignalRClientError,
+    client2::{ResponseStream, SignalRClient},
+    ClientMessage, IntoInvocationPart, InvocationPart, MessageEncoding, SignalRClientError,
 };
 use futures::{Stream, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
@@ -66,9 +66,9 @@ impl<'a> Sender<'a> {
 
         let serialized = self.encoding.serialize(&invocation)?;
 
-        self.client.send_message_internal(serialized).await?;
+        self.client.send_message(serialized).await?;
         self.client
-            .send_streams_internal(into_actual_streams(self.streams))
+            .send_streams(into_actual_streams(self.streams))
             .await
     }
 
@@ -82,14 +82,29 @@ impl<'a> Sender<'a> {
 
         let serialized = self.encoding.serialize(&invocation)?;
 
-        // TODO: Register for response
-
-        self.client.send_message_internal(serialized).await?;
         self.client
-            .send_streams_internal(into_actual_streams(self.streams))
+            .invoke::<T>(invocation_id, serialized, into_actual_streams(self.streams))
+            .await
+    }
+
+    pub async fn invoke_stream<T: DeserializeOwned>(
+        self,
+    ) -> Result<ResponseStream<'a, T>, SignalRClientError> {
+        let invocation_id = Uuid::new_v4().to_string();
+        let arguments = args_as_option(self.arguments);
+
+        let mut invocation = Invocation::non_blocking(self.method, arguments);
+        invocation.with_invocation_id(invocation_id.clone());
+        invocation.with_streams(get_stream_ids(&self.streams));
+
+        let serialized = self.encoding.serialize(&invocation)?;
+
+        let response_stream = self
+            .client
+            .invoke_stream::<T>(invocation_id, serialized, into_actual_streams(self.streams))
             .await?;
 
-        todo!()
+        Ok(response_stream)
     }
 }
 
