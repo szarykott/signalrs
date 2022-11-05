@@ -3,14 +3,14 @@ use std::fmt::Display;
 use crate::client::{client2::Command, SignalRClientError};
 
 use super::{
-    client2::{SignalRClient, TransportClientHandle},
+    client2::{TransportClientHandle},
     ClientMessage,
 };
-use futures::{select, SinkExt, Stream, StreamExt};
+use futures::{select, SinkExt, StreamExt};
 use log::error;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
-    tungstenite::{self, Message},
+    tungstenite::{Message},
     MaybeTlsStream, WebSocketStream,
 };
 
