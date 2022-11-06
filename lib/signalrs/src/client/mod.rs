@@ -6,17 +6,17 @@ mod messages;
 mod send_builder;
 mod websocket;
 
-use self::hub::Hub;
+
 pub use self::{
     error::{ChannelSendError, SignalRClientError},
     messages::ClientMessage,
     messages::MessageEncoding,
 };
-use crate::protocol::{Invocation, StreamInvocation};
-use futures::{Sink, Stream, StreamExt};
-use serde::{de::DeserializeOwned, Serialize};
-use std::sync::{Arc, Mutex};
-use uuid::Uuid;
+
+use futures::{Stream, StreamExt};
+use serde::{Serialize};
+
+
 
 pub enum InvocationPart<T> {
     Argument(T),
