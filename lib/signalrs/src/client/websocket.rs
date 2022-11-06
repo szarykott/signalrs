@@ -1,18 +1,12 @@
 use std::fmt::Display;
 
-use crate::client::{client2::Command, SignalRClientError};
+use crate::client::{client::Command, SignalRClientError};
 
-use super::{
-    client2::{TransportClientHandle},
-    ClientMessage,
-};
+use super::{client::TransportClientHandle, ClientMessage};
 use futures::{select, SinkExt, StreamExt};
 use log::error;
 use tokio::net::TcpStream;
-use tokio_tungstenite::{
-    tungstenite::{Message},
-    MaybeTlsStream, WebSocketStream,
-};
+use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
 pub(crate) async fn websocket_hub<'a>(
     mut websocket: WebSocketStream<MaybeTlsStream<TcpStream>>,

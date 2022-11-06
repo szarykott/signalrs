@@ -1,40 +1,40 @@
 use super::super::common::{ClientOutputWrapper, ReceiverExt};
 use flume::{r#async::RecvStream, Receiver};
 use serde_json::json;
-use signalrs::client::{self, ClientMessage, SignalRClient};
+use signalrs::client::{self, ClientMessage};
 
-#[tokio::test]
-async fn test_send_no_args() -> Result<(), Box<dyn std::error::Error>> {
-    let (mut client, rx) = build_client();
+// #[tokio::test]
+// async fn test_send_no_args() -> Result<(), Box<dyn std::error::Error>> {
+//     let (mut client, rx) = build_client();
 
-    client.method("fun").send().await?;
+//     client.method("fun").send().await?;
 
-    let expected = json!({
-        "type" : 1,
-        "target": "fun"
-    });
+//     let expected = json!({
+//         "type" : 1,
+//         "target": "fun"
+//     });
 
-    let actual = rx.next_json_value();
+//     let actual = rx.next_json_value();
 
-    assert_eq!(expected, actual);
+//     assert_eq!(expected, actual);
 
-    Ok(())
-}
+//     Ok(())
+// }
 
-// ============== HELPERS ======================== //
+// // ============== HELPERS ======================== //
 
-fn build_client() -> (
-    SignalRClient<ClientOutputWrapper<ClientMessage>, RecvStream<'static, ClientMessage>>,
-    Receiver<ClientMessage>,
-) {
-    let (client_output_sender, client_output_receiver) = flume::bounded::<ClientMessage>(100);
-    let (_, client_input_receiver) = flume::bounded::<ClientMessage>(100);
+// fn build_client() -> (
+//     SignalRClient<ClientOutputWrapper<ClientMessage>, RecvStream<'static, ClientMessage>>,
+//     Receiver<ClientMessage>,
+// ) {
+//     let (client_output_sender, client_output_receiver) = flume::bounded::<ClientMessage>(100);
+//     let (_, client_input_receiver) = flume::bounded::<ClientMessage>(100);
 
-    let client_output_sender =
-        ClientOutputWrapper::<ClientMessage>::new_text(client_output_sender.into_sink());
+//     let client_output_sender =
+//         ClientOutputWrapper::<ClientMessage>::new_text(client_output_sender.into_sink());
 
-    let client =
-        client::new_text_client(client_output_sender, client_input_receiver.into_stream(), None);
+//     let client =
+//         client::new_text_client(client_output_sender, client_input_receiver.into_stream(), None);
 
-    (client, client_output_receiver)
-}
+//     (client, client_output_receiver)
+// }

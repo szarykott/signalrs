@@ -1,10 +1,10 @@
 use crate::{
-    client::sender::InvocationStream,
+    client::InvocationStream,
     protocol::{Invocation, StreamItem},
 };
 
 use super::{
-    client2::{ResponseStream, SignalRClient},
+    client::{ResponseStream, SignalRClient},
     ClientMessage, IntoInvocationPart, InvocationPart, MessageEncoding, SignalRClientError,
 };
 use futures::{Stream, StreamExt};

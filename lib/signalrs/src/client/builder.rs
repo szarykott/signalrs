@@ -1,5 +1,5 @@
 use super::{
-    client2::{self, SignalRClient},
+    client::{self, SignalRClient},
     hub::Hub,
     messages::MessageEncoding,
     websocket, ClientMessage,
@@ -87,7 +87,7 @@ impl ClientBuilder {
         let (ws_handle, _) = tokio_tungstenite::connect_async(to_ws_scheme(&self.url)?).await?;
         let (tx, rx) = flume::bounded::<ClientMessage>(1);
 
-        let (transport_handle, client) = client2::new_client(tx, self.hub);
+        let (transport_handle, client) = client::new_client(tx, self.hub);
         let transport_future = websocket::websocket_hub(ws_handle, transport_handle, rx);
 
         tokio::spawn(transport_future);
