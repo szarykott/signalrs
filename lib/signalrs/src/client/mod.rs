@@ -6,17 +6,17 @@ mod messages;
 mod send_builder;
 mod websocket;
 
-
 pub use self::{
+    builder::ClientBuilder,
+    client::SignalRClient,
     error::{ChannelSendError, SignalRClientError},
     messages::ClientMessage,
     messages::MessageEncoding,
+    send_builder::SendBuilder,
 };
 
 use futures::{Stream, StreamExt};
-use serde::{Serialize};
-
-
+use serde::Serialize;
 
 pub enum InvocationPart<T> {
     Argument(T),

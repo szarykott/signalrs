@@ -11,7 +11,7 @@ use futures::{Stream, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
-struct Sender<'a> {
+pub struct SendBuilder<'a> {
     client: &'a SignalRClient,
     method: String,
     encoding: MessageEncoding,
@@ -24,7 +24,17 @@ struct ClientStream {
     items: Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>,
 }
 
-impl<'a> Sender<'a> {
+impl<'a> SendBuilder<'a> {
+    pub fn new(client: &'a SignalRClient, method: impl ToString) -> Self {
+        SendBuilder {
+            client,
+            method: method.to_string(),
+            encoding: MessageEncoding::Json,
+            arguments: Default::default(),
+            streams: Default::default(),
+        }
+    }
+
     /// Adds ordered argument to invocation
     pub fn arg<A>(mut self, arg: A) -> Result<Self, SignalRClientError>
     where

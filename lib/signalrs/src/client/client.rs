@@ -1,4 +1,7 @@
-use super::{hub::Hub, ChannelSendError, ClientMessage, SignalRClientError};
+use super::{
+    builder::ClientBuilder, hub::Hub, ChannelSendError, ClientMessage, SendBuilder,
+    SignalRClientError,
+};
 use crate::protocol::MessageType;
 use flume::Sender;
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
@@ -157,6 +160,14 @@ impl TransportClientHandle {
 }
 
 impl SignalRClient {
+    pub fn builder(url: impl Into<String>) -> ClientBuilder {
+        ClientBuilder::new(url)
+    }
+
+    pub fn call_builder<'a>(&'a self, method: impl ToString) -> SendBuilder<'a> {
+        SendBuilder::new(self, method)
+    }
+
     pub(crate) fn new(invocations: &Invocations, transport_handle: Sender<ClientMessage>) -> Self {
         SignalRClient {
             invocations: invocations.to_owned(),
