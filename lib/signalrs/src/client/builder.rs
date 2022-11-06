@@ -6,6 +6,7 @@ use super::{
 };
 use crate::negotiate::NegotiateResponseV0;
 use futures::SinkExt;
+use log::info;
 use thiserror::Error;
 use tokio_tungstenite::tungstenite;
 
@@ -102,7 +103,7 @@ impl ClientBuilder {
             format!("{}/{}", &self.url, "negotiate")
         };
 
-        let mut request = reqwest::Client::new().get(negotiate_endpoint);
+        let mut request = reqwest::Client::new().post(negotiate_endpoint);
 
         request = match &self.auth {
             Auth::None => request,
@@ -132,11 +133,11 @@ fn can_connect(negotiate_response: NegotiateResponseV0) -> bool {
     negotiate_response
         .available_transports
         .iter()
-        .find(|i| i.transport == crate::negotiate::WebSocketTransport)
+        .find(|i| i.transport == crate::negotiate::WEB_SOCKET_TRANSPORT)
         .and_then(|i| {
             i.transfer_formats
                 .iter()
-                .find(|j| j.as_str() == crate::negotiate::TextTransportFormat)
+                .find(|j| j.as_str() == crate::negotiate::TEXT_TRANSPORT_FORMAT)
         })
         .is_some()
 }

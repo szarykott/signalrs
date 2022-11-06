@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-pub const WebSocketTransport: &str = "WebSocket";
-pub const TextTransportFormat: &str = "Text";
+pub const WEB_SOCKET_TRANSPORT: &str = "WebSockets";
+pub const TEXT_TRANSPORT_FORMAT: &str = "Text";
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
