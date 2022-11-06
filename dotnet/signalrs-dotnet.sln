@@ -1,0 +1,33 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "dotnet-client", "dotnet-client", "{E7B74F41-DB73-438A-9C85-F4503B3D6193}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "dotnet-client-app", "dotnet-client\dotnet-client-app\dotnet-client-app.csproj", "{198980B7-2FFF-4E3D-B333-C345449F2425}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "server-sample", "server-sample\server-sample.csproj", "{99A00170-32B6-46EA-B9D3-0E847B922F54}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{198980B7-2FFF-4E3D-B333-C345449F2425}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{198980B7-2FFF-4E3D-B333-C345449F2425}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{198980B7-2FFF-4E3D-B333-C345449F2425}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{198980B7-2FFF-4E3D-B333-C345449F2425}.Release|Any CPU.Build.0 = Release|Any CPU
+		{99A00170-32B6-46EA-B9D3-0E847B922F54}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{99A00170-32B6-46EA-B9D3-0E847B922F54}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{99A00170-32B6-46EA-B9D3-0E847B922F54}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{99A00170-32B6-46EA-B9D3-0E847B922F54}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{198980B7-2FFF-4E3D-B333-C345449F2425} = {E7B74F41-DB73-438A-9C85-F4503B3D6193}
+	EndGlobalSection
+EndGlobal
