@@ -3,7 +3,7 @@ use std::time::Duration;
 use flume::Receiver;
 use futures::{Stream, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
-use signalrs::server::response::{HubResponseStruct, ResponseSink};
+use signalrs_next::server::response::{HubResponseStruct, ResponseSink};
 
 pub struct TestReceiver {
     receiver: Receiver<HubResponseStruct>,

@@ -1,19 +1,25 @@
 [package]
 edition = "2021"
-name = "signalrs-axum"
+name = "signalrs-next"
 version = "0.1.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-axum = {version = "0.5", features = ["ws"]}
-flume = {version = "0.10"}
+async-trait = "0.1"
+flume = "0.10.13"
 futures = "0.3"
-log = "0.4"
-signalrs-next = {path = "../signalrs-next"}
-tokio = {version = "1", features = ["rt-multi-thread"]}
-tokio-tungstenite = "0.17"
-
+log = "0.4.17"
+pin-project = "1"
+reqwest = "0.11"
+rmp-serde = "1.1"
+serde = {version = "1.0", features = ["derive"]}
+serde_json = "1.0"
+serde_repr = "0.1"
+thiserror = "1.0.31"
+tokio = {version = "1", features = ["full"]}
+tokio-tungstenite = {version = "0.17", features = ["rustls"]}
+tokio-util = "0.7.3"
 [dependencies.uuid]
 features = [
   "v4", # Lets you generate random UUIDs
@@ -23,6 +29,7 @@ features = [
 version = "1.1"
 
 [dev-dependencies]
+anyhow = "1.0.66"
 async-stream = "0.3"
-simple_logger = {version = "2.3.0"}
-tower-http = {version = "0", features = ["cors", "fs", "trace"]}
+rstest = "0.15"
+simple_logger = "2.2.0"

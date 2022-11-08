@@ -7,7 +7,7 @@ use axum::{
 };
 use futures::{future::FutureExt, select, sink::SinkExt, stream::StreamExt};
 use log::*;
-use signalrs::{
+use signalrs_next::{
     negotiate::NegotiateResponseV0,
     server::{connection::ConnectionState, hub::Hub, response::ResponseSink, Server},
 };

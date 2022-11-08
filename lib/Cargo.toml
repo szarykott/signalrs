@@ -3,5 +3,6 @@
 members = [
   "signalrs",
   "signalrs-axum",
+  "signalrs-next",
   "playground",
 ]

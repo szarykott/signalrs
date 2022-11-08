@@ -8,7 +8,7 @@ use futures::{
 };
 use log::LevelFilter;
 use log::*;
-use signalrs::{
+use signalrs_next::{
     protocol::*,
     server::{
         connection::ConnectionState, error::SignalRError, extract::UploadStream,
