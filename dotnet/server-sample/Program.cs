@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using server_sample.Hubs;
 
 internal class Program
@@ -16,17 +17,15 @@ internal class Program
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
         builder.Services.AddSignalR();
+        builder.Services.AddLogging(builder =>
+        {
+            builder.SetMinimumLevel(LogLevel.Trace);
+            builder.AddConsole();
+        });
 
         var app = builder.Build();
 
-        // Configure the HTTP request pipeline.
-        if (app.Environment.IsDevelopment())
-        {
-            app.UseSwagger();
-            app.UseSwaggerUI();
-        }
-
-        app.UseAuthorization();
+        app.UseHttpLogging();
 
         app.MapControllers();
         app.MapHub<Chat>("/chat");

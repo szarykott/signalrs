@@ -1,19 +1,16 @@
 use super::{
     client::{self, SignalRClient},
     hub::Hub,
-    messages::MessageEncoding,
     websocket, ClientMessage,
 };
 use crate::negotiate::NegotiateResponseV0;
-use futures::SinkExt;
-use log::info;
 use thiserror::Error;
 use tokio_tungstenite::tungstenite;
+use tracing::*;
 
 pub struct ClientBuilder {
     url: String,
     hub: Option<Hub>,
-    encoding: MessageEncoding,
     auth: Auth,
 }
 
@@ -62,7 +59,6 @@ impl ClientBuilder {
     pub fn new(url: impl Into<String>) -> Self {
         ClientBuilder {
             url: url.into(),
-            encoding: MessageEncoding::Json,
             hub: None,
             auth: Auth::None,
         }
@@ -92,6 +88,8 @@ impl ClientBuilder {
         let transport_future = websocket::websocket_hub(ws_handle, transport_handle, rx);
 
         tokio::spawn(transport_future);
+
+        event!(Level::TRACE, "constructed client");
 
         Ok(client)
     }

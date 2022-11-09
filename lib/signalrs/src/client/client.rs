@@ -5,10 +5,10 @@ use super::{
 use crate::protocol::MessageType;
 use flume::Sender;
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
-use log::*;
 use serde::{de::DeserializeOwned, Deserialize};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::oneshot;
+use tracing::*;
 
 pub struct SignalRClient {
     invocations: Invocations,
@@ -175,6 +175,7 @@ impl SignalRClient {
         }
     }
 
+    #[instrument(skip_all, name = "invoke")]
     pub(crate) async fn invoke<T>(
         &self,
         invocation_id: String,
@@ -203,6 +204,7 @@ impl SignalRClient {
         result
     }
 
+    #[instrument(skip_all, name = "invoke stream")]
     pub(crate) async fn invoke_stream<'a, T>(
         &'a self,
         invocation_id: String,
@@ -239,6 +241,7 @@ impl SignalRClient {
         self.send_streams(streams).await
     }
 
+    #[instrument(skip_all, name = "send message")]
     pub(crate) async fn send_message(
         &self,
         message: ClientMessage,
@@ -250,6 +253,7 @@ impl SignalRClient {
             .map_err(|e| e.into())
     }
 
+    #[instrument(skip_all, name = "send streams")]
     pub(crate) async fn send_streams(
         &self,
         streams: Vec<Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>>,

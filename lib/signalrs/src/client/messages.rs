@@ -1,6 +1,8 @@
-use std::fmt::Display;
+use std::{fmt::Display, ops::Deref};
 
 use serde::{de::DeserializeOwned, Serialize};
+
+use crate::serialization;
 
 use super::SignalRClientError;
 
@@ -24,7 +26,10 @@ impl ClientMessage {
         T: DeserializeOwned,
     {
         match self {
-            ClientMessage::Json(value) => Ok(serde_json::from_str(&value)?),
+            ClientMessage::Json(value) => {
+                let stripped = serialization::strip_record_separator(value.as_str());
+                Ok(serde_json::from_str(stripped)?)
+            }
             ClientMessage::Binary(_) => todo!(),
         }
     }
@@ -47,7 +52,10 @@ impl ClientMessage {
 impl MessageEncoding {
     pub fn serialize(&self, message: impl Serialize) -> Result<ClientMessage, SignalRClientError> {
         match self {
-            MessageEncoding::Json => Ok(ClientMessage::Json(serde_json::to_string(&message)?)),
+            MessageEncoding::Json => {
+                let json = serialization::to_json(&message)?;
+                Ok(ClientMessage::Json(json))
+            }
         }
     }
 }

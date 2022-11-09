@@ -1,27 +1,34 @@
 use std::fmt::Display;
 
-use crate::client::{client::Command, SignalRClientError};
+use crate::{
+    client::{client::Command, SignalRClientError},
+    negotiate::WEB_SOCKET_TRANSPORT,
+    protocol::{HandshakeRequest, HandshakeResponse},
+    serialization,
+};
 
 use super::{client::TransportClientHandle, ClientMessage};
 use futures::{select, SinkExt, StreamExt};
-use log::error;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use tracing::*;
 
 pub(crate) async fn websocket_hub<'a>(
     mut websocket: WebSocketStream<MaybeTlsStream<TcpStream>>,
     client: TransportClientHandle,
     messages_to_send: flume::Receiver<ClientMessage>,
 ) {
+    handshake(&mut websocket).await.unwrap(); //TODO: no unwrap
     let mut messages_to_send = messages_to_send.into_stream().fuse();
     loop {
+        let span = debug_span!("websocket event loop item");
         select! {
             to_send = messages_to_send.next() => {
                 if to_send.is_none() {
                     break;
                 }
 
-                send_message(&mut websocket, to_send.unwrap()).await;
+                send_message(&mut websocket, to_send.unwrap()).instrument(span).await;
             },
             received = websocket.next() => {
                 if received.is_none() {
@@ -30,7 +37,7 @@ pub(crate) async fn websocket_hub<'a>(
 
                 match received.unwrap() {
                     Ok(message) => {
-                        match incoming_message(&mut websocket, message, &client).await {
+                        match incoming_message(&mut websocket, message, &client).instrument(span).await {
                             Ok(Command::Close) => break,
                             Ok(Command::None) => {  },
                             Err(error) => incoming_message_error(error)
@@ -40,6 +47,33 @@ pub(crate) async fn websocket_hub<'a>(
                 }
             }
         }
+    }
+
+    async fn handshake(
+        websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
+    ) -> Result<(), SignalRClientError> {
+        let request = serialization::to_json(&HandshakeRequest::new(WEB_SOCKET_TRANSPORT))?;
+        websocket.send(Message::Text(request)).await?;
+        let response =
+            websocket
+                .next()
+                .await
+                .ok_or_else(|| SignalRClientError::ProtocolError {
+                    message: "no handshake response".into(),
+                })??;
+
+        match response {
+            Message::Text(value) => {
+                let stripped = serialization::strip_record_separator(&value);
+                let response: HandshakeResponse = serde_json::from_str(stripped)?;
+                if response.is_error() {
+                    // TODO: break
+                }
+            }
+            _ => { /*todo better ignoring, this one is dangerous*/ }
+        }
+
+        Ok(())
     }
 
     async fn send_message(
@@ -93,6 +127,6 @@ pub(crate) async fn websocket_hub<'a>(
     }
 
     fn incoming_message_error(error: impl Display) {
-        error!("{}", error)
+        error!("error during reception of message: {}", error)
     }
 }

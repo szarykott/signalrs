@@ -4,9 +4,9 @@ pub mod invocation;
 
 use self::{functions::HubMethod, invocation::HubInvocation};
 use crate::protocol::MessageType;
-use log::*;
 use serde::Deserialize;
 use std::collections::HashMap;
+use tracing::*;
 
 use super::{ClientMessage, SignalRClientError};
 

@@ -4,7 +4,7 @@ use super::{hub::invocation::ExtractionError, messages::ClientMessage};
 
 #[derive(Error, Debug)]
 pub enum SignalRClientError {
-    #[error("Json error")]
+    #[error("Json error: {source}")]
     JsonError {
         #[from]
         source: serde_json::Error,

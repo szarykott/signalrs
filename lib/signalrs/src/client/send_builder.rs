@@ -9,6 +9,7 @@ use super::{
 };
 use futures::{Stream, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
+use tracing::instrument;
 use uuid::Uuid;
 
 pub struct SendBuilder<'a> {
@@ -68,6 +69,7 @@ impl<'a> SendBuilder<'a> {
         }
     }
 
+    #[instrument(skip_all, name = "send")]
     pub async fn send(self) -> Result<(), SignalRClientError> {
         let arguments = args_as_option(self.arguments);
 
@@ -82,6 +84,7 @@ impl<'a> SendBuilder<'a> {
             .await
     }
 
+    #[instrument(skip_all, name = "invoke")]
     pub async fn invoke<T: DeserializeOwned>(self) -> Result<T, SignalRClientError> {
         let invocation_id = Uuid::new_v4().to_string();
         let arguments = args_as_option(self.arguments);
@@ -97,6 +100,7 @@ impl<'a> SendBuilder<'a> {
             .await
     }
 
+    #[instrument(skip_all, name = "invoke_stream")]
     pub async fn invoke_stream<T: DeserializeOwned>(
         self,
     ) -> Result<ResponseStream<'a, T>, SignalRClientError> {

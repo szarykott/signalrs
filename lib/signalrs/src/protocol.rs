@@ -11,6 +11,13 @@ pub struct HandshakeRequest {
 }
 
 impl HandshakeRequest {
+    pub fn new(protocol: impl ToString) -> Self {
+        HandshakeRequest {
+            protocol: protocol.to_string(),
+            version: 0,
+        }
+    }
+
     pub fn is_json(&self) -> bool {
         self.protocol == "json"
     }
@@ -33,6 +40,10 @@ impl HandshakeResponse {
         HandshakeResponse {
             error: Some(reason.to_string()),
         }
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.error.is_some()
     }
 }
 
