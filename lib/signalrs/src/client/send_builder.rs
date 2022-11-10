@@ -1,6 +1,6 @@
 use crate::{
     client::InvocationStream,
-    protocol::{Invocation, StreamItem},
+    protocol::{Invocation, StreamInvocation, StreamItem},
 };
 
 use super::{
@@ -9,7 +9,6 @@ use super::{
 };
 use futures::{Stream, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
-use tracing::instrument;
 use uuid::Uuid;
 
 pub struct SendBuilder<'a> {
@@ -22,7 +21,7 @@ pub struct SendBuilder<'a> {
 
 struct ClientStream {
     stream_id: String,
-    items: Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>,
+    items: Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin + Send>,
 }
 
 impl<'a> SendBuilder<'a> {
@@ -37,9 +36,10 @@ impl<'a> SendBuilder<'a> {
     }
 
     /// Adds ordered argument to invocation
-    pub fn arg<A>(mut self, arg: A) -> Result<Self, SignalRClientError>
+    pub fn arg<A, B>(mut self, arg: A) -> Result<Self, SignalRClientError>
     where
-        A: IntoInvocationPart<A> + Serialize + 'static,
+        A: IntoInvocationPart<B> + Send + 'static,
+        B: Serialize + Send + 'static,
     {
         match arg.into() {
             InvocationPart::Argument(arg) => self.arguments.push(serde_json::to_value(arg)?),
@@ -52,7 +52,7 @@ impl<'a> SendBuilder<'a> {
 
         return Ok(self);
 
-        fn into_client_stream<A: Serialize + 'static>(
+        fn into_client_stream<A: Serialize + Send + 'static>(
             stream_id: String,
             input: InvocationStream<A>,
             encoding: MessageEncoding,
@@ -69,7 +69,6 @@ impl<'a> SendBuilder<'a> {
         }
     }
 
-    #[instrument(skip_all, name = "send")]
     pub async fn send(self) -> Result<(), SignalRClientError> {
         let arguments = args_as_option(self.arguments);
 
@@ -79,12 +78,13 @@ impl<'a> SendBuilder<'a> {
         let serialized = self.encoding.serialize(&invocation)?;
 
         self.client.send_message(serialized).await?;
-        self.client
-            .send_streams(into_actual_streams(self.streams))
-            .await
+        SignalRClient::send_streams(
+            self.client.get_transport_handle(),
+            into_actual_streams(self.streams),
+        )
+        .await
     }
 
-    #[instrument(skip_all, name = "invoke")]
     pub async fn invoke<T: DeserializeOwned>(self) -> Result<T, SignalRClientError> {
         let invocation_id = Uuid::new_v4().to_string();
         let arguments = args_as_option(self.arguments);
@@ -100,15 +100,13 @@ impl<'a> SendBuilder<'a> {
             .await
     }
 
-    #[instrument(skip_all, name = "invoke_stream")]
     pub async fn invoke_stream<T: DeserializeOwned>(
         self,
     ) -> Result<ResponseStream<'a, T>, SignalRClientError> {
         let invocation_id = Uuid::new_v4().to_string();
-        let arguments = args_as_option(self.arguments);
 
-        let mut invocation = Invocation::non_blocking(self.method, arguments);
-        invocation.with_invocation_id(invocation_id.clone());
+        let mut invocation =
+            StreamInvocation::new(invocation_id.clone(), self.method, Some(self.arguments));
         invocation.with_streams(get_stream_ids(&self.streams));
 
         let serialized = self.encoding.serialize(&invocation)?;
@@ -136,7 +134,7 @@ fn get_stream_ids(streams: &[ClientStream]) -> Vec<String> {
 
 fn into_actual_streams(
     streams: Vec<ClientStream>,
-) -> Vec<Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin>> {
+) -> Vec<Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin + Send>> {
     streams.into_iter().map(|s| s.items).collect()
 }
 

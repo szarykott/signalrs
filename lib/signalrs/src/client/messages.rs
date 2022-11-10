@@ -1,4 +1,4 @@
-use std::{fmt::Display, ops::Deref};
+use std::fmt::Display;
 
 use serde::{de::DeserializeOwned, Serialize};
 
@@ -45,6 +45,17 @@ impl ClientMessage {
         match self {
             ClientMessage::Json(value) => &value,
             ClientMessage::Binary(_) => todo!(),
+        }
+    }
+
+    pub fn split(self) -> Vec<ClientMessage> {
+        match self {
+            ClientMessage::Json(message) => message
+                .split(serialization::RECORD_SEPARATOR)
+                .filter(|item| !item.trim().is_empty())
+                .map(|item| ClientMessage::Json(item.to_owned()))
+                .collect(),
+            ClientMessage::Binary(_) => unimplemented!(),
         }
     }
 }

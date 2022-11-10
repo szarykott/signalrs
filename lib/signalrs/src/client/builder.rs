@@ -81,15 +81,18 @@ impl ClientBuilder {
             todo!() // return error
         }
 
-        let (ws_handle, _) = tokio_tungstenite::connect_async(to_ws_scheme(&self.url)?).await?;
+        let (mut ws_handle, _) = tokio_tungstenite::connect_async(to_ws_scheme(&self.url)?).await?;
         let (tx, rx) = flume::bounded::<ClientMessage>(1);
 
         let (transport_handle, client) = client::new_client(tx, self.hub);
+
+        websocket::handshake(&mut ws_handle).await.unwrap(); // TODO: no unwrap
+
         let transport_future = websocket::websocket_hub(ws_handle, transport_handle, rx);
 
         tokio::spawn(transport_future);
 
-        event!(Level::TRACE, "constructed client");
+        event!(Level::DEBUG, "constructed client");
 
         Ok(client)
     }

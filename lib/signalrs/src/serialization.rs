@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-const RECORD_SEPARATOR: &str = "\u{001E}";
+pub const RECORD_SEPARATOR: &str = "\u{001E}";
 
 pub fn to_json<T>(value: &T) -> Result<String, serde_json::Error>
 where

@@ -23,10 +23,10 @@ pub enum InvocationPart<T> {
     Stream(InvocationStream<T>),
 }
 
-pub struct InvocationStream<T>(Box<dyn Stream<Item = T> + Unpin>);
+pub struct InvocationStream<T>(Box<dyn Stream<Item = T> + Unpin + Send>);
 
 impl<T> InvocationStream<T> {
-    pub fn new(inner: impl Stream<Item = T> + Unpin + 'static) -> Self {
+    pub fn new(inner: impl Stream<Item = T> + Unpin + Send + 'static) -> Self {
         InvocationStream(Box::new(inner))
     }
 }

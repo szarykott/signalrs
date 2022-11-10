@@ -2,7 +2,6 @@ use std::fmt::Display;
 
 use crate::{
     client::{client::Command, SignalRClientError},
-    negotiate::WEB_SOCKET_TRANSPORT,
     protocol::{HandshakeRequest, HandshakeResponse},
     serialization,
 };
@@ -13,15 +12,40 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::*;
 
+pub(crate) async fn handshake(
+    websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
+) -> Result<(), SignalRClientError> {
+    let request = serialization::to_json(&HandshakeRequest::new("json"))?;
+    websocket.send(Message::Text(request)).await?;
+    let response = websocket
+        .next()
+        .await
+        .ok_or_else(|| SignalRClientError::ProtocolError {
+            message: "no handshake response".into(),
+        })??;
+
+    match response {
+        Message::Text(value) => {
+            let stripped = serialization::strip_record_separator(&value);
+            let response: HandshakeResponse = serde_json::from_str(stripped)?;
+            if response.is_error() {
+                // TODO: break
+            }
+        }
+        _ => { /*todo better ignoring, this one is dangerous*/ }
+    }
+
+    Ok(())
+}
+
 pub(crate) async fn websocket_hub<'a>(
     mut websocket: WebSocketStream<MaybeTlsStream<TcpStream>>,
     client: TransportClientHandle,
     messages_to_send: flume::Receiver<ClientMessage>,
 ) {
-    handshake(&mut websocket).await.unwrap(); //TODO: no unwrap
     let mut messages_to_send = messages_to_send.into_stream().fuse();
     loop {
-        let span = debug_span!("websocket event loop item");
+        let span = debug_span!("websocket");
         select! {
             to_send = messages_to_send.next() => {
                 if to_send.is_none() {
@@ -49,39 +73,15 @@ pub(crate) async fn websocket_hub<'a>(
         }
     }
 
-    async fn handshake(
-        websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
-    ) -> Result<(), SignalRClientError> {
-        let request = serialization::to_json(&HandshakeRequest::new(WEB_SOCKET_TRANSPORT))?;
-        websocket.send(Message::Text(request)).await?;
-        let response =
-            websocket
-                .next()
-                .await
-                .ok_or_else(|| SignalRClientError::ProtocolError {
-                    message: "no handshake response".into(),
-                })??;
-
-        match response {
-            Message::Text(value) => {
-                let stripped = serialization::strip_record_separator(&value);
-                let response: HandshakeResponse = serde_json::from_str(stripped)?;
-                if response.is_error() {
-                    // TODO: break
-                }
-            }
-            _ => { /*todo better ignoring, this one is dangerous*/ }
-        }
-
-        Ok(())
-    }
-
     async fn send_message(
         websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
         message: ClientMessage,
     ) {
         let result = match message {
-            ClientMessage::Json(text) => websocket.send(Message::Text(text)).await,
+            ClientMessage::Json(text) => {
+                event!(Level::TRACE, text, "text message sent",);
+                websocket.send(Message::Text(text)).await
+            }
             ClientMessage::Binary(bytes) => websocket.send(Message::Binary(bytes)).await,
         };
 
@@ -96,8 +96,11 @@ pub(crate) async fn websocket_hub<'a>(
         client: &'a TransportClientHandle,
     ) -> Result<Command, SignalRClientError> {
         return match message {
-            Message::Text(text) => client.receive_message(ClientMessage::Json(text)),
-            Message::Binary(bytes) => client.receive_message(ClientMessage::Binary(bytes)),
+            Message::Text(text) => {
+                event!(Level::TRACE, text, "text message received");
+                client.receive_messages(ClientMessage::Json(text))
+            }
+            Message::Binary(bytes) => client.receive_messages(ClientMessage::Binary(bytes)),
             Message::Ping(payload) => {
                 send_pong(websocket, payload).await;
                 return Ok(Command::None);

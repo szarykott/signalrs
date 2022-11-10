@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{ser::SerializeSeq, Deserialize, Serialize, Serializer};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{collections::HashMap, convert::From, fmt::Display};
 
@@ -14,7 +14,7 @@ impl HandshakeRequest {
     pub fn new(protocol: impl ToString) -> Self {
         HandshakeRequest {
             protocol: protocol.to_string(),
-            version: 0,
+            version: 1,
         }
     }
 
@@ -167,6 +167,17 @@ pub struct StreamInvocation<A> {
     #[serde(skip_serializing_if = "Option::is_none")]
     stream_ids: Option<Vec<String>>,
 }
+
+// fn serialize_arguments<S, A>(x: &Option<A>, s: S) -> Result<S::Ok, S::Error>
+// where
+//     S: Serializer,
+//     A: Serialize,
+// {
+//     match x {
+//         Some(value) => s.serialize_some(value),
+//         None => s.serialize_seq(Some(0))?.end(),
+//     }
+// }
 
 impl<A> StreamInvocation<A> {
     pub fn new(

@@ -1,5 +1,5 @@
 use signalrs::client::SignalRClient;
-use tracing::Level;
+use tracing::*;
 use tracing_subscriber::{self, filter, prelude::*};
 
 #[tokio::main]
@@ -16,7 +16,9 @@ async fn main() -> anyhow::Result<()> {
         .invoke::<String>()
         .await?;
 
-    println!("result = {}", result);
+    info!("result = {}", result);
+
+    assert_eq!("message", result);
 
     Ok(())
 }
@@ -25,7 +27,7 @@ fn set_tracing_subscriber() {
     let targets_filter = filter::Targets::new()
         .with_target("signalrs", Level::TRACE)
         .with_target("tokio_tungstenite::compat", Level::DEBUG)
-        .with_default(Level::TRACE);
+        .with_default(Level::DEBUG);
 
     let fmt_layer = tracing_subscriber::fmt::layer()
         .with_line_number(false)
