@@ -1,5 +1,5 @@
 use crate::{
-    client::InvocationStream,
+    client::{stream_ext::SignalRStreamExt, InvocationStream},
     protocol::{Invocation, StreamInvocation, StreamItem},
 };
 
@@ -21,7 +21,7 @@ pub struct SendBuilder<'a> {
 
 struct ClientStream {
     stream_id: String,
-    items: Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin + Send>,
+    items: Box<dyn Stream<Item = ClientMessage> + Unpin + Send>,
 }
 
 impl<'a> SendBuilder<'a> {
@@ -60,7 +60,8 @@ impl<'a> SendBuilder<'a> {
             let items = input
                 .zip(futures::stream::repeat(stream_id.clone()))
                 .map(|(i, id)| StreamItem::new(id, i))
-                .map(move |i| encoding.serialize(i));
+                .map(move |i| encoding.serialize(i))
+                .append_completion(stream_id.clone(), encoding);
 
             ClientStream {
                 stream_id,
@@ -134,7 +135,7 @@ fn get_stream_ids(streams: &[ClientStream]) -> Vec<String> {
 
 fn into_actual_streams(
     streams: Vec<ClientStream>,
-) -> Vec<Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin + Send>> {
+) -> Vec<Box<dyn Stream<Item = ClientMessage> + Unpin + Send>> {
     streams.into_iter().map(|s| s.items).collect()
 }
 

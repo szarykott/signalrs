@@ -4,6 +4,7 @@ mod error;
 mod hub;
 mod messages;
 mod send_builder;
+mod stream_ext;
 mod websocket;
 
 pub use self::{

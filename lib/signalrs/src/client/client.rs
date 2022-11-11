@@ -214,9 +214,7 @@ impl SignalRClient {
         &self,
         invocation_id: String,
         message: ClientMessage,
-        streams: Vec<
-            Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin + Send>,
-        >,
+        streams: Vec<Box<dyn Stream<Item = ClientMessage> + Unpin + Send>>,
     ) -> Result<T, SignalRClientError>
     where
         T: DeserializeOwned,
@@ -260,9 +258,7 @@ impl SignalRClient {
         &'a self,
         invocation_id: String,
         message: ClientMessage,
-        streams: Vec<
-            Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin + Send>,
-        >,
+        streams: Vec<Box<dyn Stream<Item = ClientMessage> + Unpin + Send>>,
     ) -> Result<ResponseStream<'a, T>, SignalRClientError>
     where
         T: DeserializeOwned,
@@ -306,9 +302,7 @@ impl SignalRClient {
 
     pub(crate) async fn send_streams(
         transport_handle: Sender<ClientMessage>,
-        streams: Vec<
-            Box<dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin + Send>,
-        >,
+        streams: Vec<Box<dyn Stream<Item = ClientMessage> + Unpin + Send>>,
     ) -> Result<(), SignalRClientError> {
         let mut futures = FuturesUnordered::new();
         for stream in streams.into_iter() {
@@ -324,12 +318,9 @@ impl SignalRClient {
 
     async fn send_stream_internal(
         transport_handle: &Sender<ClientMessage>,
-        mut stream: Box<
-            dyn Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin + Send,
-        >,
+        mut stream: Box<dyn Stream<Item = ClientMessage> + Unpin + Send>,
     ) -> Result<(), SignalRClientError> {
         while let Some(item) = stream.next().await {
-            let item = item?;
             transport_handle
                 .send_async(item)
                 .await
