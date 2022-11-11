@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::client::messages::ClientMessage;
+use crate::messages::ClientMessage;
 
 pub struct HubInvocation {
     pub(crate) message: ClientMessage,

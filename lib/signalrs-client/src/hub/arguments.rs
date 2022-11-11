@@ -1,5 +1,5 @@
 use super::invocation::{ArgumentsLeft, ExtractionError, FromInvocation, HubInvocation};
-use crate::{client::messages::MessageEncoding, protocol::Arguments};
+use crate::{messages::MessageEncoding, protocol::Arguments};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::vec::IntoIter;

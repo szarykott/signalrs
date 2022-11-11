@@ -1,6 +1,7 @@
 use crate::{
-    client::{stream_ext::SignalRStreamExt, InvocationStream},
     protocol::{Invocation, StreamInvocation, StreamItem},
+    stream_ext::SignalRStreamExt,
+    InvocationStream,
 };
 
 use super::{

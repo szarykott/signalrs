@@ -1,8 +1,8 @@
 use super::{client::TransportClientHandle, messages::ClientMessage};
 use crate::{
-    client::{client::Command, SignalRClientError},
+    client::Command,
     protocol::{HandshakeRequest, HandshakeResponse},
-    serialization,
+    serialization, SignalRClientError,
 };
 use futures::{select, SinkExt, StreamExt};
 use std::fmt::Display;
