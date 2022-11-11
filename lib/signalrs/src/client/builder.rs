@@ -5,13 +5,21 @@ use super::{
 };
 use crate::negotiate::NegotiateResponseV0;
 use thiserror::Error;
-use tokio_tungstenite::tungstenite;
+use tokio::net::TcpStream;
+use tokio_tungstenite::{
+    tungstenite::{self, WebSocket},
+    MaybeTlsStream, WebSocketStream,
+};
 use tracing::*;
 
 pub struct ClientBuilder {
-    url: String,
+    domain: String,
     hub: Option<Hub>,
     auth: Auth,
+    secure_connection: bool,
+    port: Option<usize>,
+    query_string: Option<String>,
+    hub_path: Option<String>,
 }
 
 pub enum Auth {
@@ -56,21 +64,45 @@ pub enum NegotiateError {
 }
 
 impl ClientBuilder {
-    pub fn new(url: impl Into<String>) -> Self {
+    pub fn new(domain: impl ToString) -> Self {
         ClientBuilder {
-            url: url.into(),
+            domain: domain.to_string(),
             hub: None,
             auth: Auth::None,
+            secure_connection: true,
+            port: None,
+            query_string: None,
+            hub_path: None,
         }
     }
 
-    pub fn with_hub(&mut self, hub: Hub) -> &mut Self {
-        self.hub = Some(hub);
+    pub fn use_port(mut self, port: usize) -> Self {
+        self.port = Some(port);
         self
     }
 
-    pub fn with_authentication(&mut self, auth: Auth) -> &mut Self {
+    pub fn use_unencrypted_connection(mut self) -> Self {
+        self.secure_connection = false;
+        self
+    }
+
+    pub fn use_authentication(&mut self, auth: Auth) -> &mut Self {
         self.auth = auth;
+        self
+    }
+
+    pub fn use_query_string(mut self, query: String) -> Self {
+        self.query_string = Some(query);
+        self
+    }
+
+    pub fn use_hub(mut self, hub: String) -> Self {
+        self.hub_path = Some(hub);
+        self
+    }
+
+    pub fn with_client_hub(mut self, hub: Hub) -> Self {
+        self.hub = Some(hub);
         self
     }
 
@@ -81,7 +113,8 @@ impl ClientBuilder {
             todo!() // return error
         }
 
-        let (mut ws_handle, _) = tokio_tungstenite::connect_async(to_ws_scheme(&self.url)?).await?;
+        let mut ws_handle = self.connect_websocket().await?;
+
         let (tx, rx) = flume::bounded::<ClientMessage>(1);
 
         let (transport_handle, client) = client::new_client(tx, self.hub);
@@ -97,12 +130,23 @@ impl ClientBuilder {
         Ok(client)
     }
 
+    async fn connect_websocket(
+        &self,
+    ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, BuilderError> {
+        let scheme = self.get_ws_scheme();
+        let domain_and_path = self.get_domain_with_path();
+        let query = self.get_query_string();
+
+        let url = format!("{}://{}?{}", scheme, domain_and_path, query);
+
+        let (ws_handle, _) = tokio_tungstenite::connect_async(url).await?;
+
+        Ok(ws_handle)
+    }
+
     async fn get_server_supported_features(&self) -> Result<NegotiateResponseV0, NegotiateError> {
-        let negotiate_endpoint = if self.url.ends_with("/") {
-            format!("{}{}", &self.url, "negotiate")
-        } else {
-            format!("{}/{}", &self.url, "negotiate")
-        };
+        let scheme = self.get_http_scheme();
+        let negotiate_endpoint = format!("{}://{}/negotiate", scheme, self.get_domain_with_path());
 
         let mut request = reqwest::Client::new().post(negotiate_endpoint);
 
@@ -117,6 +161,38 @@ impl ClientBuilder {
         let response: NegotiateResponseV0 = serde_json::from_str(&http_response.text().await?)?;
 
         Ok(response)
+    }
+
+    fn get_query_string(&self) -> String {
+        if let Some(qs) = &self.query_string {
+            qs.clone()
+        } else {
+            Default::default()
+        }
+    }
+
+    fn get_http_scheme(&self) -> &str {
+        if self.secure_connection {
+            "https"
+        } else {
+            "http"
+        }
+    }
+
+    fn get_ws_scheme(&self) -> &str {
+        if self.secure_connection {
+            "wss"
+        } else {
+            "ws"
+        }
+    }
+
+    fn get_domain_with_path(&self) -> String {
+        if let Some(path) = &self.hub_path {
+            format!("{}/{}", &self.domain, path)
+        } else {
+            format!("{}", &self.domain)
+        }
     }
 }
 

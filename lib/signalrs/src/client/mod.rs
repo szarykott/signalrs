@@ -1,7 +1,7 @@
 mod builder;
 mod client;
 mod error;
-mod hub;
+pub mod hub;
 mod messages;
 mod send_builder;
 mod stream_ext;

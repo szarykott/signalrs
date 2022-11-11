@@ -2,7 +2,10 @@ mod arguments;
 mod functions;
 pub mod invocation;
 
-use self::{functions::HubMethod, invocation::HubInvocation};
+use self::{
+    functions::{Handler, HandlerWrapper, HubMethod},
+    invocation::HubInvocation,
+};
 use crate::protocol::MessageType;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -16,13 +19,19 @@ pub struct Hub {
 }
 
 impl Hub {
-    pub fn method<M>(&mut self, name: impl ToString, method: M)
+    pub fn method<M, Args>(mut self, name: impl ToString, method: M) -> Self
     where
-        M: HubMethod + Send + Sync + 'static,
+        M: Handler<Args> + Send + Sync + Clone + 'static,
+        Args: Send + Sync + 'static,
     {
-        if let Some(_) = self.methods.insert(name.to_string(), Box::new(method)) {
+        if let Some(_) = self
+            .methods
+            .insert(name.to_string(), Box::new(HandlerWrapper::<M, Args>::from(method)))
+        {
             warn!("overwritten method {}", name.to_string())
         }
+
+        self
     }
 
     pub fn call(&self, message: ClientMessage) -> Result<(), SignalRClientError> {

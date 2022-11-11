@@ -191,8 +191,8 @@ impl TransportClientHandle {
 }
 
 impl SignalRClient {
-    pub fn builder(url: impl Into<String>) -> ClientBuilder {
-        ClientBuilder::new(url)
+    pub fn builder(domain: impl ToString) -> ClientBuilder {
+        ClientBuilder::new(domain)
     }
 
     pub fn call_builder<'a>(&'a self, method: impl ToString) -> SendBuilder<'a> {
