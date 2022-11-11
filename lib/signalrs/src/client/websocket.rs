@@ -1,13 +1,11 @@
-use std::fmt::Display;
-
+use super::{client::TransportClientHandle, messages::ClientMessage};
 use crate::{
     client::{client::Command, SignalRClientError},
     protocol::{HandshakeRequest, HandshakeResponse},
     serialization,
 };
-
-use super::{client::TransportClientHandle, ClientMessage};
 use futures::{select, SinkExt, StreamExt};
+use std::fmt::Display;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::*;

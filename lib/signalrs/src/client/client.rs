@@ -1,5 +1,5 @@
 use super::{
-    builder::ClientBuilder, hub::Hub, ChannelSendError, ClientMessage, SendBuilder,
+    builder::ClientBuilder, hub::Hub, messages::ClientMessage, ChannelSendError, SendBuilder,
     SignalRClientError,
 };
 use crate::protocol::{Completion, MessageType, StreamItem};

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use signalrs::client::{hub::Hub, SignalRClient};
+use signalrs::client::{Hub, SignalRClient};
 use tracing::*;
 use tracing_subscriber::{self, filter, prelude::*};
 

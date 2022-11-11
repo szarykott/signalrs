@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::*;
 
-use super::{ClientMessage, SignalRClientError};
+use super::{messages::ClientMessage, SignalRClientError};
 
 #[derive(Default)]
 pub struct Hub {

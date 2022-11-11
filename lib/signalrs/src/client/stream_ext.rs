@@ -1,6 +1,9 @@
 use crate::protocol::Completion;
 
-use super::{ClientMessage, MessageEncoding, SignalRClientError};
+use super::{
+    messages::{ClientMessage, MessageEncoding},
+    SignalRClientError,
+};
 use futures::{Stream, StreamExt};
 use std::{
     pin::Pin,

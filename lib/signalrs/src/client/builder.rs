@@ -1,9 +1,9 @@
 use super::{
     client::{self, SignalRClient},
     hub::Hub,
-    websocket, ClientMessage,
+    websocket,
 };
-use crate::negotiate::NegotiateResponseV0;
+use crate::{client::messages::ClientMessage, negotiate::NegotiateResponseV0};
 use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
@@ -193,16 +193,6 @@ impl ClientBuilder {
         } else {
             format!("{}", &self.domain)
         }
-    }
-}
-
-fn to_ws_scheme(url: &str) -> Result<String, BuilderError> {
-    if url.starts_with("https://") {
-        Ok(url.replace("https://", "wss://"))
-    } else if url.starts_with("http://") {
-        Ok(url.replace("http://", "ws://"))
-    } else {
-        Err(BuilderError::Url(url.to_owned()))
     }
 }
 

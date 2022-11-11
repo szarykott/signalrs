@@ -5,7 +5,8 @@ use crate::{
 
 use super::{
     client::{ResponseStream, SignalRClient},
-    ClientMessage, IntoInvocationPart, InvocationPart, MessageEncoding, SignalRClientError,
+    messages::{ClientMessage, MessageEncoding},
+    IntoInvocationPart, InvocationPart, SignalRClientError,
 };
 use futures::{Stream, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};

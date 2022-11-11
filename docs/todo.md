@@ -11,19 +11,11 @@ SignalR protocol implementation in Rust
 # Features
 
 1. Client
-   1. Send up to 13 args DONE
-   1. Invoke up to 13 args
-   1. Stream up to 13 args
-   1. Client side streams
-   1. Client builder
-      1. for tests
-      1. for web (implicit websocket)
-   1. Client hub
-   1. Proper cleanup (cooperative cancellation) 
-2. Broadcast to other clients
-3. Proper integration with tracing
-4. Documentation
-5. Macros crate for derive macro
+   1. Cancellation 
+   2. Add state
+   3. Error structure
+2. Documentation
+3. Macros crate for derive macro
 
 # Examples
 
