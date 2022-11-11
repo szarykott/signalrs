@@ -6,10 +6,7 @@ use super::{
 use crate::{client::messages::ClientMessage, negotiate::NegotiateResponseV0};
 use thiserror::Error;
 use tokio::net::TcpStream;
-use tokio_tungstenite::{
-    tungstenite::{self, WebSocket},
-    MaybeTlsStream, WebSocketStream,
-};
+use tokio_tungstenite::{tungstenite, MaybeTlsStream, WebSocketStream};
 use tracing::*;
 
 pub struct ClientBuilder {
