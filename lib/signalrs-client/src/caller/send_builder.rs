@@ -1,13 +1,14 @@
 use crate::{
+    caller::stream_ext::SignalRStreamExt,
+    messages::{ClientMessage, MessageEncoding},
     protocol::{Invocation, StreamInvocation, StreamItem},
-    stream_ext::SignalRStreamExt,
     InvocationStream,
 };
 
 use super::{
-    client::{ResponseStream, SignalRClient},
-    messages::{ClientMessage, MessageEncoding},
-    IntoInvocationPart, InvocationPart, SignalRClientError,
+    error::ClientError,
+    parts::{IntoInvocationPart, InvocationPart},
+    SignalRClientError, {ResponseStream, SignalRClient},
 };
 use futures::{Stream, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
@@ -47,7 +48,7 @@ impl<'a> SendBuilder<'a> {
             InvocationPart::Argument(arg) => self.arguments.push(serde_json::to_value(arg)?),
             InvocationPart::Stream(stream) => {
                 let stream_id = Uuid::new_v4().to_string();
-                let client_stream = into_client_stream(stream_id, stream, self.encoding);
+                let client_stream = into_client_stream::<B>(stream_id, stream, self.encoding);
                 self.streams.push(client_stream);
             }
         };
@@ -72,13 +73,16 @@ impl<'a> SendBuilder<'a> {
         }
     }
 
-    pub async fn send(self) -> Result<(), SignalRClientError> {
+    pub async fn send(self) -> Result<(), ClientError> {
         let arguments = args_as_option(self.arguments);
 
         let mut invocation = Invocation::non_blocking(self.method, arguments);
         invocation.with_streams(get_stream_ids(&self.streams));
 
-        let serialized = self.encoding.serialize(&invocation)?;
+        let serialized = self
+            .encoding
+            .serialize(&invocation)
+            .map_err(|error| -> ClientError { error.into() })?;
 
         self.client.send_message(serialized).await?;
         SignalRClient::send_streams(

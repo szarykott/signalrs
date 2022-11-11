@@ -1,15 +1,17 @@
 use std::marker::PhantomData;
 
-use super::invocation::{FromInvocation, HubInvocation};
-use crate::client::SignalRClientError;
+use super::{
+    error::HubError,
+    invocation::{FromInvocation, HubInvocation},
+};
 use futures::Future;
 
 pub trait HubMethod {
-    fn call(&self, request: HubInvocation) -> Result<(), SignalRClientError>;
+    fn call(&self, request: HubInvocation) -> Result<(), HubError>;
 }
 
 pub trait Handler<T> {
-    fn call(self, request: HubInvocation) -> Result<(), SignalRClientError>;
+    fn call(self, request: HubInvocation) -> Result<(), HubError>;
 }
 
 pub struct HandlerWrapper<H, T> {
@@ -21,7 +23,7 @@ impl<H, T> HubMethod for HandlerWrapper<H, T>
 where
     H: Handler<T> + Clone,
 {
-    fn call(&self, request: HubInvocation) -> Result<(), SignalRClientError> {
+    fn call(&self, request: HubInvocation) -> Result<(), HubError> {
         self.handler.clone().call(request)
     }
 }
@@ -43,7 +45,7 @@ where
     Fn: FnOnce() -> Fut + Send + 'static,
     Fut: Future<Output = ()> + Send,
 {
-    fn call(self, _request: HubInvocation) -> Result<(), SignalRClientError> {
+    fn call(self, _request: HubInvocation) -> Result<(), HubError> {
         tokio::spawn(async move {
             (self)().await;
         });
@@ -58,7 +60,7 @@ where
     Fut: Future<Output = ()> + Send,
     T: FromInvocation + Send + 'static,
 {
-    fn call(self, mut request: HubInvocation) -> Result<(), SignalRClientError> {
+    fn call(self, mut request: HubInvocation) -> Result<(), HubError> {
         let arg = T::try_from_invocation(&mut request)?;
 
         tokio::spawn(async move {
@@ -80,7 +82,7 @@ macro_rules! implement_handler {
                 $ty: FromInvocation + Send + 'static,
             )+
         {
-            fn call(self, mut request: HubInvocation) -> Result<(), SignalRClientError> {
+            fn call(self, mut request: HubInvocation) -> Result<(), HubError> {
                 $(
                     let $ty = $ty::try_from_invocation(&mut request)?;
                 )+

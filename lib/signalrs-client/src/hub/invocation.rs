@@ -17,7 +17,7 @@ pub enum ArgumentsLeft {
 }
 
 impl HubInvocation {
-    pub fn new(message: ClientMessage) -> Self {
+    pub(crate) fn new(message: ClientMessage) -> Self {
         HubInvocation {
             message,
             state: Default::default(),

@@ -1,30 +1,31 @@
-use super::{client::TransportClientHandle, messages::ClientMessage};
 use crate::{
-    client::Command,
+    caller::Command,
+    messages,
     protocol::{HandshakeRequest, HandshakeResponse},
-    serialization, SignalRClientError,
+    SignalRClientError,
 };
+use crate::{caller::TransportClientHandle, messages::ClientMessage};
 use futures::{select, SinkExt, StreamExt};
 use std::fmt::Display;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::*;
 
+use super::TransportError;
+
 pub(crate) async fn handshake(
     websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
-) -> Result<(), SignalRClientError> {
-    let request = serialization::to_json(&HandshakeRequest::new("json"))?;
+) -> Result<(), TransportError> {
+    let request = messages::to_json(&HandshakeRequest::new("json"))?;
     websocket.send(Message::Text(request)).await?;
     let response = websocket
         .next()
         .await
-        .ok_or_else(|| SignalRClientError::ProtocolError {
-            message: "no handshake response".into(),
-        })??;
+        .ok_or_else(|| TransportError::BadReceive)??;
 
     match response {
         Message::Text(value) => {
-            let stripped = serialization::strip_record_separator(&value);
+            let stripped = messages::strip_record_separator(&value);
             let response: HandshakeResponse = serde_json::from_str(stripped)?;
             if response.is_error() {
                 // TODO: break
@@ -92,7 +93,7 @@ pub(crate) async fn websocket_hub<'a>(
         websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
         message: Message,
         client: &'a TransportClientHandle,
-    ) -> Result<Command, SignalRClientError> {
+    ) -> Result<Command, TransportError> {
         return match message {
             Message::Text(text) => {
                 event!(Level::TRACE, text, "text message received");

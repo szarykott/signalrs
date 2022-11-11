@@ -1,5 +1,5 @@
 use futures::StreamExt;
-use signalrs::client::{InvocationStream, SignalRClient};
+use signalrs_client::{InvocationStream, SignalRClient};
 use tracing::*;
 use tracing_subscriber::{self, filter, prelude::*};
 

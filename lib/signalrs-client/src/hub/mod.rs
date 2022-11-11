@@ -1,8 +1,10 @@
 mod arguments;
+mod error;
 mod functions;
 pub mod invocation;
 
 use self::{
+    error::{HubError, MalformedRequest},
     functions::{Handler, HandlerWrapper, HubMethod},
     invocation::HubInvocation,
 };
@@ -34,11 +36,13 @@ impl Hub {
         self
     }
 
-    pub fn call(&self, message: ClientMessage) -> Result<(), SignalRClientError> {
+    pub(crate) fn call(&self, message: ClientMessage) -> Result<(), HubError> {
         let RoutingData {
             message_type,
             target,
-        } = message.deserialize()?;
+        } = message
+            .deserialize()
+            .map_err(|error| -> MalformedRequest { error.into() })?;
 
         match message_type {
             MessageType::Invocation => self.invocation(target, message),
@@ -46,25 +50,23 @@ impl Hub {
         }
     }
 
-    fn invocation(
-        &self,
-        target: Option<String>,
-        message: ClientMessage,
-    ) -> Result<(), SignalRClientError> {
-        let target = target.ok_or_else(|| SignalRClientError::ProtocolError {
+    fn invocation(&self, target: Option<String>, message: ClientMessage) -> Result<(), HubError> {
+        let target = target.ok_or_else(|| HubError::Unprocessable {
             message: "Target of invocation missing in request".into(),
         })?;
 
         let method = self
             .methods
             .get(&target)
-            .ok_or_else(|| SignalRClientError::HubError(format!("target {} not found", target)))?;
+            .ok_or_else(|| HubError::Unprocessable {
+                message: format!("target {} not found", target),
+            })?;
 
         method.call(HubInvocation::new(message))
     }
 
-    fn unsupported(&self, message_type: MessageType) -> Result<(), SignalRClientError> {
-        Err(SignalRClientError::ProtocolError {
+    fn unsupported(&self, message_type: MessageType) -> Result<(), HubError> {
+        Err(HubError::Unsupported {
             message: format!("{message_type} not supported by client-side hub"),
         })
     }

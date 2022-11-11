@@ -1,9 +1,6 @@
-use crate::protocol::Completion;
+use crate::{messages::SerializationError, protocol::Completion};
 
-use super::{
-    messages::{ClientMessage, MessageEncoding},
-    SignalRClientError,
-};
+use super::messages::{ClientMessage, MessageEncoding};
 use futures::{Stream, StreamExt};
 use std::{
     pin::Pin,
@@ -11,7 +8,7 @@ use std::{
 };
 use tracing::*;
 
-pub trait SignalRStreamExt: Sized {
+pub(crate) trait SignalRStreamExt: Sized {
     fn append_completion(
         self,
         stream_id: String,
@@ -37,7 +34,7 @@ where
     }
 }
 
-pub struct AppendCompletion<S> {
+pub(crate) struct AppendCompletion<S> {
     stream_id: String,
     encoding: MessageEncoding,
     inner: S,
@@ -73,7 +70,7 @@ impl<S> AppendCompletion<S> {
 
 impl<S> Stream for AppendCompletion<S>
 where
-    S: Stream<Item = Result<ClientMessage, SignalRClientError>> + Unpin,
+    S: Stream<Item = Result<ClientMessage, SerializationError>> + Unpin,
 {
     type Item = ClientMessage;
 

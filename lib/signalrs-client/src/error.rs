@@ -43,7 +43,7 @@ pub enum SignalRClientError {
 }
 
 #[derive(Error, Debug)]
-pub enum ChannelSendError {
+pub(crate) enum ChannelSendError {
     #[error("Error while sending text message")]
     TextError {
         #[from]

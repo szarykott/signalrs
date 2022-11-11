@@ -1,8 +1,14 @@
-use super::{
-    builder::ClientBuilder, hub::Hub, messages::ClientMessage, ChannelSendError, SendBuilder,
-    SignalRClientError,
+pub mod error;
+pub mod parts;
+pub mod send_builder;
+mod stream_ext;
+
+use self::error::ClientError;
+use super::{builder::ClientBuilder, hub::Hub, messages::ClientMessage, SendBuilder};
+use crate::{
+    error::ChannelSendError,
+    protocol::{Completion, MessageType, StreamItem},
 };
-use crate::protocol::{Completion, MessageType, StreamItem};
 use flume::{r#async::RecvStream, Sender};
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
 use serde::{de::DeserializeOwned, Deserialize};
@@ -49,7 +55,7 @@ pub struct ResponseStream<'a, T> {
     items: RecvStream<'a, ClientMessageWrapper>,
     invocation_id: String,
     client: &'a SignalRClient,
-    upload: JoinHandle<Result<(), SignalRClientError>>,
+    upload: JoinHandle<Result<(), ClientError>>,
     _phantom: PhantomData<T>,
 }
 
@@ -77,10 +83,7 @@ impl TransportClientHandle {
         }
     }
 
-    pub(crate) fn receive_messages(
-        &self,
-        messages: ClientMessage,
-    ) -> Result<Command, SignalRClientError> {
+    pub(crate) fn receive_messages(&self, messages: ClientMessage) -> Result<Command, ClientError> {
         for message in messages.split() {
             // TODO: Add aggregate error subtype or log here
             // TODO: service close properly
@@ -90,10 +93,7 @@ impl TransportClientHandle {
         Ok(Command::None)
     }
 
-    pub(crate) fn receive_message(
-        &self,
-        message: ClientMessage,
-    ) -> Result<Command, SignalRClientError> {
+    pub(crate) fn receive_message(&self, message: ClientMessage) -> Result<Command, ClientError> {
         let RoutingData {
             invocation_id,
             message_type,
@@ -108,13 +108,13 @@ impl TransportClientHandle {
             x => log_unsupported(x),
         };
 
-        fn log_unsupported(message_type: MessageType) -> Result<Command, SignalRClientError> {
+        fn log_unsupported(message_type: MessageType) -> Result<Command, ClientError> {
             warn!("received unsupported message type: {message_type}");
             Ok(Command::None)
         }
     }
 
-    fn receive_invocation(&self, message: ClientMessage) -> Result<Command, SignalRClientError> {
+    fn receive_invocation(&self, message: ClientMessage) -> Result<Command, ClientError> {
         if let Some(hub) = &self.hub {
             hub.call(message)?;
         }
@@ -126,7 +126,7 @@ impl TransportClientHandle {
         &self,
         invocation_id: Option<String>,
         message: ClientMessage,
-    ) -> Result<Command, SignalRClientError> {
+    ) -> Result<Command, ClientError> {
         let invocation_id = invocation_id.ok_or_else(|| SignalRClientError::ProtocolError {
             message: "completion without invocation id".into(),
         })?;
@@ -152,7 +152,7 @@ impl TransportClientHandle {
         &self,
         invocation_id: Option<String>,
         message: ClientMessage,
-    ) -> Result<Command, SignalRClientError> {
+    ) -> Result<Command, ClientError> {
         let invocation_id = invocation_id.ok_or_else(|| SignalRClientError::ProtocolError {
             message: "stream item without invocation id".into(),
         })?;
@@ -179,12 +179,12 @@ impl TransportClientHandle {
         Ok(Command::None)
     }
 
-    fn receive_ping(&self) -> Result<Command, SignalRClientError> {
+    fn receive_ping(&self) -> Result<Command, ClientError> {
         debug!("ping received");
         Ok(Command::None)
     }
 
-    fn receive_close(&self) -> Result<Command, SignalRClientError> {
+    fn receive_close(&self) -> Result<Command, ClientError> {
         info!("close received");
         Ok(Command::Close)
     }
@@ -215,7 +215,7 @@ impl SignalRClient {
         invocation_id: String,
         message: ClientMessage,
         streams: Vec<Box<dyn Stream<Item = ClientMessage> + Unpin + Send>>,
-    ) -> Result<T, SignalRClientError>
+    ) -> Result<T, ClientError>
     where
         T: DeserializeOwned,
     {
@@ -259,7 +259,7 @@ impl SignalRClient {
         invocation_id: String,
         message: ClientMessage,
         streams: Vec<Box<dyn Stream<Item = ClientMessage> + Unpin + Send>>,
-    ) -> Result<ResponseStream<'a, T>, SignalRClientError>
+    ) -> Result<ResponseStream<'a, T>, ClientError>
     where
         T: DeserializeOwned,
     {
@@ -285,15 +285,13 @@ impl SignalRClient {
         Ok(response_stream)
     }
 
-    pub(crate) async fn send_message(
-        &self,
-        message: ClientMessage,
-    ) -> Result<(), SignalRClientError> {
+    pub(crate) async fn send_message(&self, message: ClientMessage) -> Result<(), ClientError> {
         self.transport_handle
             .send_async(message)
             .await
-            .map_err(|e| -> ChannelSendError { e.into() })
-            .map_err(|e| -> SignalRClientError { e.into() })?;
+            .map_err(|e| SignalRClientError::SendError {
+                source: ChannelSendError::TextError { source: e },
+            })?;
 
         event!(Level::DEBUG, "message sent");
 
@@ -303,7 +301,7 @@ impl SignalRClient {
     pub(crate) async fn send_streams(
         transport_handle: Sender<ClientMessage>,
         streams: Vec<Box<dyn Stream<Item = ClientMessage> + Unpin + Send>>,
-    ) -> Result<(), SignalRClientError> {
+    ) -> Result<(), ClientError> {
         let mut futures = FuturesUnordered::new();
         for stream in streams.into_iter() {
             futures.push(Self::send_stream_internal(&transport_handle, stream));
@@ -319,7 +317,7 @@ impl SignalRClient {
     async fn send_stream_internal(
         transport_handle: &Sender<ClientMessage>,
         mut stream: Box<dyn Stream<Item = ClientMessage> + Unpin + Send>,
-    ) -> Result<(), SignalRClientError> {
+    ) -> Result<(), ClientError> {
         while let Some(item) = stream.next().await {
             transport_handle
                 .send_async(item)
@@ -375,7 +373,7 @@ impl<'a, T> Stream for ResponseStream<'a, T>
 where
     T: DeserializeOwned,
 {
-    type Item = Result<T, SignalRClientError>;
+    type Item = Result<T, ClientError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.items.poll_next_unpin(cx) {
@@ -384,6 +382,7 @@ where
                     let item = message_wrapper
                         .message
                         .deserialize::<StreamItem<T>>()
+                        .map_err(|e| -> ClientError { e.into() })
                         .and_then(|item| Ok(item.item));
                     Poll::Ready(Some(item))
                 }

@@ -1,9 +1,9 @@
 use super::{
-    client::{self, SignalRClient},
+    caller::{self, SignalRClient},
     hub::Hub,
-    websocket,
+    transport,
 };
-use crate::{messages::ClientMessage, negotiate::NegotiateResponseV0};
+use crate::{messages::ClientMessage, protocol::NegotiateResponseV0};
 use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite, MaybeTlsStream, WebSocketStream};
@@ -114,11 +114,11 @@ impl ClientBuilder {
 
         let (tx, rx) = flume::bounded::<ClientMessage>(1);
 
-        let (transport_handle, client) = client::new_client(tx, self.hub);
+        let (transport_handle, client) = caller::new_client(tx, self.hub);
 
-        websocket::handshake(&mut ws_handle).await.unwrap(); // TODO: no unwrap
+        transport::handshake(&mut ws_handle).await.unwrap(); // TODO: no unwrap
 
-        let transport_future = websocket::websocket_hub(ws_handle, transport_handle, rx);
+        let transport_future = transport::websocket_hub(ws_handle, transport_handle, rx);
 
         tokio::spawn(transport_future);
 
@@ -197,11 +197,11 @@ fn can_connect(negotiate_response: NegotiateResponseV0) -> bool {
     negotiate_response
         .available_transports
         .iter()
-        .find(|i| i.transport == crate::negotiate::WEB_SOCKET_TRANSPORT)
+        .find(|i| i.transport == crate::protocol::WEB_SOCKET_TRANSPORT)
         .and_then(|i| {
             i.transfer_formats
                 .iter()
-                .find(|j| j.as_str() == crate::negotiate::TEXT_TRANSPORT_FORMAT)
+                .find(|j| j.as_str() == crate::protocol::TEXT_TRANSPORT_FORMAT)
         })
         .is_some()
 }
