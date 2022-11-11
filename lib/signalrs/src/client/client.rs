@@ -1,9 +1,9 @@
 use super::{
-    builder::ClientBuilder, hub::Hub, messages, ChannelSendError, ClientMessage, SendBuilder,
+    builder::ClientBuilder, hub::Hub, ChannelSendError, ClientMessage, SendBuilder,
     SignalRClientError,
 };
 use crate::protocol::{Completion, MessageType, StreamItem};
-use flume::{r#async::RecvStream, Receiver, Sender};
+use flume::{r#async::RecvStream, Sender};
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
 use serde::{de::DeserializeOwned, Deserialize};
 use std::{
