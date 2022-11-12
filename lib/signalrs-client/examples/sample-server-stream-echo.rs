@@ -14,7 +14,7 @@ async fn main() -> anyhow::Result<()> {
     let stream = futures::stream::repeat("item").take(5);
 
     let mut result = client
-        .call_builder("StreamEcho")
+        .method("StreamEcho")
         .arg(InvocationStream::new(stream))?
         .invoke_stream::<String>()
         .await?;

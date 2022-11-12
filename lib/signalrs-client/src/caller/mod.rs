@@ -6,7 +6,6 @@ mod stream_ext;
 use self::error::ClientError;
 use super::{builder::ClientBuilder, hub::Hub, messages::ClientMessage, SendBuilder};
 use crate::{
-    error::ChannelSendError,
     protocol::{Completion, MessageType, StreamItem},
 };
 use flume::{r#async::RecvStream, Sender};
@@ -24,7 +23,6 @@ use tracing::*;
 
 pub struct SignalRClient {
     invocations: Invocations,
-    // hub: Option<Hub>,
     transport_handle: Sender<ClientMessage>,
 }
 
@@ -97,7 +95,7 @@ impl TransportClientHandle {
         let RoutingData {
             invocation_id,
             message_type,
-        } = message.deserialize()?;
+        } = message.deserialize().map_err(|error| ClientError::malformed_response(error))?;
 
         return match message_type {
             MessageType::Invocation => self.receive_invocation(message),
@@ -127,9 +125,7 @@ impl TransportClientHandle {
         invocation_id: Option<String>,
         message: ClientMessage,
     ) -> Result<Command, ClientError> {
-        let invocation_id = invocation_id.ok_or_else(|| SignalRClientError::ProtocolError {
-            message: "completion without invocation id".into(),
-        })?;
+        let invocation_id = invocation_id.ok_or_else(|| ClientError::protocol_violation("received completion without invocation id"))?;
 
         let sender = self.invocations.remove_invocation(&invocation_id);
 
@@ -153,9 +149,7 @@ impl TransportClientHandle {
         invocation_id: Option<String>,
         message: ClientMessage,
     ) -> Result<Command, ClientError> {
-        let invocation_id = invocation_id.ok_or_else(|| SignalRClientError::ProtocolError {
-            message: "stream item without invocation id".into(),
-        })?;
+        let invocation_id = invocation_id.ok_or_else(|| ClientError::protocol_violation("received stream item without stream id"))?;
 
         let sender = {
             let invocations = self.invocations.invocations.lock().unwrap(); // TODO: can it be posioned, use parking_lot?
@@ -195,7 +189,7 @@ impl SignalRClient {
         ClientBuilder::new(domain)
     }
 
-    pub fn call_builder<'a>(&'a self, method: impl ToString) -> SendBuilder<'a> {
+    pub fn method<'a>(&'a self, method: impl ToString) -> SendBuilder<'a> {
         SendBuilder::new(self, method)
     }
 
@@ -210,12 +204,12 @@ impl SignalRClient {
         self.transport_handle.clone()
     }
 
-    pub(crate) async fn invoke<T>(
+    pub(crate) async fn invoke_option<T>(
         &self,
         invocation_id: String,
         message: ClientMessage,
         streams: Vec<Box<dyn Stream<Item = ClientMessage> + Unpin + Send>>,
-    ) -> Result<T, ClientError>
+    ) -> Result<Option<T>, ClientError>
     where
         T: DeserializeOwned,
     {
@@ -233,24 +227,21 @@ impl SignalRClient {
         let result = rx.recv_async().await;
         upload.abort();
 
-        event!(Level::DEBUG, "response received");
 
         self.invocations.remove_invocation(&invocation_id);
 
         let completion = result
-            .map_err(|error| error.into())
-            .and_then(|message| message.message.deserialize::<Completion<T>>())?;
+            .map_err(|error| ClientError::no_response(error))
+            .and_then(|message| message.message.deserialize::<Completion<T>>().map_err(|error| ClientError::malformed_response(error)))?;
+
+        event!(Level::DEBUG, "response received");
 
         if completion.is_result() {
-            Ok(completion.unwrap_result())
+            Ok(Some(completion.unwrap_result()))
         } else if completion.is_error() {
-            Err(SignalRClientError::InvocationError {
-                message: completion.unwrap_error(),
-            })
+            Err(ClientError::result(completion.unwrap_error()))
         } else {
-            Err(SignalRClientError::ProtocolError {
-                message: "completion without result".into(), // TODO: most probably this is allowed but need to compile now
-            })
+            Ok(None)
         }
     }
 
@@ -289,9 +280,7 @@ impl SignalRClient {
         self.transport_handle
             .send_async(message)
             .await
-            .map_err(|e| SignalRClientError::SendError {
-                source: ChannelSendError::TextError { source: e },
-            })?;
+            .map_err(|e| ClientError::transport(e))?;
 
         event!(Level::DEBUG, "message sent");
 
@@ -322,8 +311,7 @@ impl SignalRClient {
             transport_handle
                 .send_async(item)
                 .await
-                .map_err(|e| -> ChannelSendError { e.into() })
-                .map_err(|e| -> SignalRClientError { e.into() })?;
+                .map_err(|e| ClientError::transport(e))?;
 
             event!(Level::TRACE, "stream item sent");
         }
@@ -382,7 +370,7 @@ where
                     let item = message_wrapper
                         .message
                         .deserialize::<StreamItem<T>>()
-                        .map_err(|e| -> ClientError { e.into() })
+                        .map_err(|e| ClientError::malformed_response(e))
                         .and_then(|item| Ok(item.item));
                     Poll::Ready(Some(item))
                 }

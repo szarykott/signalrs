@@ -12,7 +12,7 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     let mut result = client
-        .call_builder("AsyncEnumerableCounter")
+        .method("AsyncEnumerableCounter")
         .arg(5)?
         .arg(1000)?
         .invoke_stream::<i32>()

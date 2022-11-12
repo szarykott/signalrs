@@ -1,6 +1,5 @@
-use crate::{messages::SerializationError, protocol::Completion};
+use crate::{messages::{SerializationError, MessageEncoding, ClientMessage}, protocol::Completion};
 
-use super::messages::{ClientMessage, MessageEncoding};
 use futures::{Stream, StreamExt};
 use std::{
     pin::Pin,

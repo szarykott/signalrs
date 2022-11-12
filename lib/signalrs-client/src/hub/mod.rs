@@ -1,5 +1,5 @@
 mod arguments;
-mod error;
+pub mod error;
 mod functions;
 pub mod invocation;
 
@@ -13,7 +13,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::*;
 
-use super::{messages::ClientMessage, SignalRClientError};
+use super::{messages::ClientMessage};
 
 #[derive(Default)]
 pub struct Hub {

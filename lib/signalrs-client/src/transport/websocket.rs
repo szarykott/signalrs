@@ -1,17 +1,20 @@
 use crate::{
-    caller::Command,
+    caller::{Command, error::ClientError},
     messages,
     protocol::{HandshakeRequest, HandshakeResponse},
-    SignalRClientError,
 };
 use crate::{caller::TransportClientHandle, messages::ClientMessage};
-use futures::{select, SinkExt, StreamExt};
-use std::fmt::Display;
+use futures::{select, SinkExt, StreamExt, FutureExt};
+use std::{fmt::Display, time::{Duration, Instant}};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::*;
-
 use super::TransportError;
+
+enum Event {
+    Close,
+    None
+}
 
 pub(crate) async fn handshake(
     websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
@@ -28,10 +31,12 @@ pub(crate) async fn handshake(
             let stripped = messages::strip_record_separator(&value);
             let response: HandshakeResponse = serde_json::from_str(stripped)?;
             if response.is_error() {
-                // TODO: break
+                return Err(TransportError::from(ClientError::handshake(response.unwrap_error())));
             }
         }
-        _ => { /*todo better ignoring, this one is dangerous*/ }
+        _ => { 
+            return Err(TransportError::from(ClientError::handshake("incomprehensible handshake response")));
+        }
     }
 
     Ok(())
@@ -42,10 +47,15 @@ pub(crate) async fn websocket_hub<'a>(
     client: TransportClientHandle,
     messages_to_send: flume::Receiver<ClientMessage>,
 ) {
+    let mut last_life_sign = Instant::now();
     let mut messages_to_send = messages_to_send.into_stream().fuse();
+    let mut ticks = tokio::time::interval(Duration::from_secs(30));
     loop {
         let span = debug_span!("websocket");
         select! {
+            _ = ticks.tick().fuse() => {
+                send_ping(&mut websocket).await;
+            },
             to_send = messages_to_send.next() => {
                 if to_send.is_none() {
                     break;
@@ -58,17 +68,32 @@ pub(crate) async fn websocket_hub<'a>(
                     break;
                 }
 
+                last_life_sign = Instant::now();
+
                 match received.unwrap() {
                     Ok(message) => {
                         match incoming_message(&mut websocket, message, &client).instrument(span).await {
-                            Ok(Command::Close) => break,
-                            Ok(Command::None) => {  },
+                            Ok(Event::None) => {  },
+                            Ok(Event::Close) => break,
                             Err(error) => incoming_message_error(error)
                         };
                     }
                     Err(error) => incoming_message_error(error),
                 }
             }
+        }
+
+        if Instant::now() - last_life_sign > Duration::from_secs(60) {
+            event!(Level::ERROR, "websocker closing due to lack of life signs from server");
+            break;
+        }
+    }
+    
+    async fn send_ping(
+        websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
+    ) {
+        if let Err(error) = websocket.send(Message::Ping(Vec::new())).await {
+            error!("{}", error)
         }
     }
 
@@ -93,28 +118,31 @@ pub(crate) async fn websocket_hub<'a>(
         websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
         message: Message,
         client: &'a TransportClientHandle,
-    ) -> Result<Command, TransportError> {
+    ) -> Result<Event, TransportError> {
         return match message {
             Message::Text(text) => {
                 event!(Level::TRACE, text, "text message received");
-                client.receive_messages(ClientMessage::Json(text))
+                let command = client.receive_messages(ClientMessage::Json(text))?;
+                Ok(command.into())
             }
-            Message::Binary(bytes) => client.receive_messages(ClientMessage::Binary(bytes)),
+            Message::Binary(bytes) => {
+                event!(Level::TRACE, length = bytes.len(), "binary message received");
+                let command = client.receive_messages(ClientMessage::Binary(bytes))?;
+                Ok(command.into())
+            },
             Message::Ping(payload) => {
                 send_pong(websocket, payload).await;
-                return Ok(Command::None);
+                return Ok(Event::None);
             }
             Message::Pong(_) => {
-                /* ignore for now, need to track time */
-                return Ok(Command::None);
+                return Ok(Event::None);
             }
             Message::Close(_) => {
-                /* probably need to send something, ignore for now */
-                return Ok(Command::Close);
+                return Ok(Event::Close);
             }
             Message::Frame(_) => {
                 /* apparently impossible to get while reading */
-                return Ok(Command::None);
+                return Ok(Event::None);
             }
         };
 
@@ -130,5 +158,14 @@ pub(crate) async fn websocket_hub<'a>(
 
     fn incoming_message_error(error: impl Display) {
         error!("error during reception of message: {}", error)
+    }
+}
+
+impl From<Command> for Event {
+    fn from(command: Command) -> Self {
+        match command {
+            Command::None => Event::None,
+            Command::Close => Event::Close,
+        }
     }
 }

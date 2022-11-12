@@ -2,7 +2,6 @@
 
 mod builder;
 mod caller;
-mod error;
 mod hub;
 mod messages;
 pub mod protocol;
@@ -15,6 +14,5 @@ pub use self::{
         send_builder::SendBuilder,
         SignalRClient,
     },
-    error::SignalRClientError,
     hub::Hub,
 };

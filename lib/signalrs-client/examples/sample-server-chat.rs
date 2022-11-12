@@ -11,7 +11,7 @@ async fn main() -> anyhow::Result<()> {
     let client1 = get_client("client1".into()).await?;
 
     client1
-        .call_builder("Send")
+        .method("Send")
         .arg("client1")?
         .arg("a message")?
         .send()
@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
     let client2 = get_client("client2".into()).await?;
 
     client2
-        .call_builder("Send")
+        .method("Send")
         .arg("client2")?
         .arg("a message")?
         .send()

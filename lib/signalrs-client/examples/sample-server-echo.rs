@@ -11,7 +11,7 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     let result = client
-        .call_builder("echo")
+        .method("echo")
         .arg("message")?
         .invoke::<String>()
         .await?;

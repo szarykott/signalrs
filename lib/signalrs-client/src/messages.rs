@@ -1,4 +1,5 @@
 use serde::{de::DeserializeOwned, Serialize};
+use serde_json::Value;
 use std::fmt::Display;
 use thiserror::Error;
 
@@ -93,6 +94,14 @@ where
 {
     let serialized = serde_json::to_string(value)?;
     Ok(serialized + RECORD_SEPARATOR)
+}
+
+pub fn to_json_value<T>(value: &T) -> Result<Value, SerializationError>
+where
+    T: ?Sized + Serialize,
+{
+    let serialized = serde_json::to_value(value)?;
+    Ok(serialized)
 }
 
 pub fn strip_record_separator(input: &str) -> &str {

@@ -76,6 +76,10 @@ impl HandshakeResponse {
     pub fn is_error(&self) -> bool {
         self.error.is_some()
     }
+
+    pub fn unwrap_error(self) -> String {
+        self.error.unwrap()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
