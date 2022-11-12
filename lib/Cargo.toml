@@ -4,5 +4,6 @@ members = [
   "signalrs-client",
   "signalrs-axum",
   "signalrs-next",
+  "signalrs-derive",
   "playground",
 ]

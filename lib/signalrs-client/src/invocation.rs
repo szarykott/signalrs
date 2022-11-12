@@ -1,20 +1,17 @@
-use crate::{
-    caller::stream_ext::SignalRStreamExt,
-    messages::{ClientMessage, MessageEncoding, self},
-    protocol::{Invocation, StreamInvocation, StreamItem},
-    InvocationStream,
-};
+//! SignalR invocation builder
 
-use super::{
-    error::ClientError,
-    parts::{IntoInvocationPart, InvocationPart},
-    {ResponseStream, SignalRClient},
+use super::{arguments::InvocationArgs, error::ClientError, ResponseStream, SignalRClient};
+use crate::{
+    arguments::InvocationStream,
+    messages::{self, ClientMessage, MessageEncoding},
+    protocol::{Invocation, StreamInvocation, StreamItem},
+    stream_ext::SignalRStreamExt,
 };
 use futures::{Stream, StreamExt};
 use serde::{de::DeserializeOwned, Serialize};
 use uuid::Uuid;
 
-pub struct SendBuilder<'a> {
+pub struct InvocationBuilder<'a> {
     client: &'a SignalRClient,
     method: String,
     encoding: MessageEncoding,
@@ -27,9 +24,9 @@ struct ClientStream {
     items: Box<dyn Stream<Item = ClientMessage> + Unpin + Send>,
 }
 
-impl<'a> SendBuilder<'a> {
-    pub fn new(client: &'a SignalRClient, method: impl ToString) -> Self {
-        SendBuilder {
+impl<'a> InvocationBuilder<'a> {
+    pub(crate) fn new(client: &'a SignalRClient, method: impl ToString) -> Self {
+        InvocationBuilder {
             client,
             method: method.to_string(),
             encoding: MessageEncoding::Json,
@@ -41,12 +38,14 @@ impl<'a> SendBuilder<'a> {
     /// Adds ordered argument to invocation
     pub fn arg<A, B>(mut self, arg: A) -> Result<Self, ClientError>
     where
-        A: IntoInvocationPart<B> + Send + 'static,
+        A: Into<InvocationArgs<B>> + Send + 'static,
         B: Serialize + Send + 'static,
     {
         match arg.into() {
-            InvocationPart::Argument(arg) => self.arguments.push(messages::to_json_value(&arg).map_err(|e| ClientError::malformed_request(e))?),
-            InvocationPart::Stream(stream) => {
+            InvocationArgs::Argument(arg) => self.arguments.push(
+                messages::to_json_value(&arg).map_err(|e| ClientError::malformed_request(e))?,
+            ),
+            InvocationArgs::Stream(stream) => {
                 let stream_id = Uuid::new_v4().to_string();
                 let client_stream = into_client_stream::<B>(stream_id, stream, self.encoding);
                 self.streams.push(client_stream);
@@ -100,16 +99,20 @@ impl<'a> SendBuilder<'a> {
         invocation.with_invocation_id(invocation_id.clone());
         invocation.with_streams(get_stream_ids(&self.streams));
 
-        let serialized = self.encoding.serialize(&invocation).map_err(|e| ClientError::malformed_request(e))?;
+        let serialized = self
+            .encoding
+            .serialize(&invocation)
+            .map_err(|e| ClientError::malformed_request(e))?;
 
-        let result = self.client
+        let result = self
+            .client
             .invoke_option::<()>(invocation_id, serialized, into_actual_streams(self.streams))
             .await;
 
         if let Err(error) = result {
-            return Err(error)
+            return Err(error);
         }
-            
+
         Ok(())
     }
 
@@ -121,7 +124,10 @@ impl<'a> SendBuilder<'a> {
         invocation.with_invocation_id(invocation_id.clone());
         invocation.with_streams(get_stream_ids(&self.streams));
 
-        let serialized = self.encoding.serialize(&invocation).map_err(|e| ClientError::malformed_request(e))?;
+        let serialized = self
+            .encoding
+            .serialize(&invocation)
+            .map_err(|e| ClientError::malformed_request(e))?;
 
         self.client
             .invoke_option::<T>(invocation_id, serialized, into_actual_streams(self.streams))
@@ -138,7 +144,10 @@ impl<'a> SendBuilder<'a> {
             StreamInvocation::new(invocation_id.clone(), self.method, Some(self.arguments));
         invocation.with_streams(get_stream_ids(&self.streams));
 
-        let serialized = self.encoding.serialize(&invocation).map_err(|e| ClientError::malformed_request(e))?;
+        let serialized = self
+            .encoding
+            .serialize(&invocation)
+            .map_err(|e| ClientError::malformed_request(e))?;
 
         let response_stream = self
             .client

@@ -1,19 +1,23 @@
 use crate::{
-    caller::{Command, error::ClientError},
     messages,
     protocol::{HandshakeRequest, HandshakeResponse},
+    {error::ClientError, Command},
 };
-use crate::{caller::TransportClientHandle, messages::ClientMessage};
-use futures::{select, SinkExt, StreamExt, FutureExt};
-use std::{fmt::Display, time::{Duration, Instant}};
+use crate::{messages::ClientMessage, TransportClientHandle};
+use futures::{select, FutureExt, SinkExt, StreamExt};
+use std::{
+    fmt::Display,
+    time::{Duration, Instant},
+};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::*;
-use super::TransportError;
+
+use super::error::TransportError;
 
 enum Event {
     Close,
-    None
+    None,
 }
 
 pub(crate) async fn handshake(
@@ -34,8 +38,10 @@ pub(crate) async fn handshake(
                 return Err(TransportError::from(ClientError::handshake(response.unwrap_error())));
             }
         }
-        _ => { 
-            return Err(TransportError::from(ClientError::handshake("incomprehensible handshake response")));
+        _ => {
+            return Err(TransportError::from(ClientError::handshake(
+                "incomprehensible handshake response",
+            )));
         }
     }
 
@@ -84,14 +90,15 @@ pub(crate) async fn websocket_hub<'a>(
         }
 
         if Instant::now() - last_life_sign > Duration::from_secs(60) {
-            event!(Level::ERROR, "websocker closing due to lack of life signs from server");
+            event!(
+                Level::ERROR,
+                "websocker closing due to lack of life signs from server"
+            );
             break;
         }
     }
-    
-    async fn send_ping(
-        websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
-    ) {
+
+    async fn send_ping(websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>) {
         if let Err(error) = websocket.send(Message::Ping(Vec::new())).await {
             error!("{}", error)
         }
@@ -129,7 +136,7 @@ pub(crate) async fn websocket_hub<'a>(
                 event!(Level::TRACE, length = bytes.len(), "binary message received");
                 let command = client.receive_messages(ClientMessage::Binary(bytes))?;
                 Ok(command.into())
-            },
+            }
             Message::Ping(payload) => {
                 send_pong(websocket, payload).await;
                 return Ok(Event::None);

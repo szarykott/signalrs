@@ -1,28 +1,22 @@
+use super::error::HubError;
+use crate::{
+    messages::{ClientMessage, MessageEncoding},
+    protocol::Arguments,
+};
+use serde_json::Value;
 use thiserror::Error;
-
-use crate::messages::ClientMessage;
 
 pub struct HubInvocation {
     pub(crate) message: ClientMessage,
     pub(crate) state: InvocationState,
 }
 
-#[derive(Default)]
-pub struct InvocationState {
-    pub(crate) arguments: Option<ArgumentsLeft>,
+pub(crate) struct InvocationState {
+    pub(crate) arguments: ArgumentsLeft,
 }
 
 pub enum ArgumentsLeft {
     Text(std::vec::IntoIter<serde_json::Value>),
-}
-
-impl HubInvocation {
-    pub(crate) fn new(message: ClientMessage) -> Self {
-        HubInvocation {
-            message,
-            state: Default::default(),
-        }
-    }
 }
 
 pub trait FromInvocation
@@ -50,4 +44,32 @@ pub enum ExtractionError {
     NotAnArray,
     #[error("An error occured : {0}")]
     UserDefined(String),
+}
+
+impl HubInvocation {
+    pub(crate) fn new(message: ClientMessage) -> Result<Self, HubError> {
+        let arguments = get_arguments(&message)?;
+
+        Ok(HubInvocation {
+            message,
+            state: InvocationState { arguments },
+        })
+    }
+
+    pub fn get_arguments(&mut self) -> &mut ArgumentsLeft {
+        &mut self.state.arguments
+    }
+}
+
+fn get_arguments(message: &ClientMessage) -> Result<ArgumentsLeft, ExtractionError> {
+    match message.get_encoding() {
+        MessageEncoding::Json => {
+            let text = message.unwrap_text();
+            let arguments: Arguments<Value> = serde_json::from_str(&text)?;
+            match arguments.arguments.unwrap_or_default() {
+                Value::Array(array) => Ok(ArgumentsLeft::Text(array.into_iter())),
+                _ => Err(ExtractionError::NotAnArray),
+            }
+        }
+    }
 }

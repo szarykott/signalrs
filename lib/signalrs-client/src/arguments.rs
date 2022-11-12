@@ -1,11 +1,20 @@
+//! Client invocation arguments
+
 use futures::{Stream, StreamExt};
 use serde::Serialize;
 
-pub enum InvocationPart<T> {
+/// Client invocation arguments
+///
+/// Can be constructed from any type that implements `Serialize` or `InvocationStream` via `From` trait.
+pub enum InvocationArgs<T> {
+    /// Simple argument that will be passed to server after serialization
     Argument(T),
+
+    /// Stream argument that will be streamed asynchronously to a server
     Stream(InvocationStream<T>),
 }
 
+/// Stream wrapper to be used in `args`
 pub struct InvocationStream<T>(Box<dyn Stream<Item = T> + Unpin + Send>);
 
 impl<T> InvocationStream<T> {
@@ -25,24 +34,20 @@ impl<T> Stream for InvocationStream<T> {
     }
 }
 
-pub trait IntoInvocationPart<T> {
-    fn into(self) -> InvocationPart<T>;
-}
-
-impl<T> IntoInvocationPart<T> for T
+impl<T> From<T> for InvocationArgs<T>
 where
     T: Serialize,
 {
-    fn into(self) -> InvocationPart<T> {
-        InvocationPart::Argument(self)
+    fn from(object: T) -> Self {
+        InvocationArgs::Argument(object)
     }
 }
 
-impl<T> IntoInvocationPart<T> for InvocationStream<T>
+impl<T> From<InvocationStream<T>> for InvocationArgs<T>
 where
     T: Serialize,
 {
-    fn into(self) -> InvocationPart<T> {
-        InvocationPart::Stream(self)
+    fn from(stream: InvocationStream<T>) -> Self {
+        InvocationArgs::Stream(stream)
     }
 }

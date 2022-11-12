@@ -1,6 +1,7 @@
-use thiserror::Error;
+//! Top level crate errors
 
-use crate::{messages::SerializationError, hub::error::HubError};
+use crate::{hub::error::HubError, messages::SerializationError};
+use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ClientError {
@@ -16,69 +17,75 @@ pub enum ClientError {
     #[error(transparent)]
     Hub {
         #[from]
-        source: HubError
+        source: HubError,
     },
 
     /// SignalR protocol was violated
-    /// 
+    ///
     /// Probably by callee, see message for details.
     #[error("protocol violation: {message}")]
-    ProtocolError {
-        message: String
-    },
+    ProtocolError { message: String },
 
-    /// There was an error 
+    /// There was an error
     #[error("it is no longer possible to receive response: {message}")]
-    NoResponse {
-        message: String
-    },
+    NoResponse { message: String },
 
     /// Error returned from the server
     #[error("error returned from the server: {message}")]
-    Result {
-        message: String
-    },
+    Result { message: String },
 
-    /// Client cannot reach transport 
-    /// 
+    /// Client cannot reach transport
+    ///
     /// There could be abrupt close of underlying transport (WebSockets or other)
     #[error("transport layer is inavailable")]
-    TransportInavailable {
-        message: String
-    },
+    TransportInavailable { message: String },
 
     #[error("handshake error")]
-    Handshake {
-        message: String
-    }
+    Handshake { message: String },
 }
 
 impl ClientError {
     pub fn protocol_violation(message: impl ToString) -> ClientError {
-        ClientError::ProtocolError { message: message.to_string() }
+        ClientError::ProtocolError {
+            message: message.to_string(),
+        }
     }
 
     pub fn no_response(message: impl ToString) -> ClientError {
-        ClientError::NoResponse { message: message.to_string() }
+        ClientError::NoResponse {
+            message: message.to_string(),
+        }
     }
 
     pub fn malformed_request(source: SerializationError) -> ClientError {
-        ClientError::Malformed { direction: "request", source }
+        ClientError::Malformed {
+            direction: "request",
+            source,
+        }
     }
 
     pub fn malformed_response(source: SerializationError) -> ClientError {
-        ClientError::Malformed { direction: "request", source }
+        ClientError::Malformed {
+            direction: "request",
+            source,
+        }
     }
 
     pub fn result(message: impl ToString) -> ClientError {
-        ClientError::Result { message: message.to_string() }
+        ClientError::Result {
+            message: message.to_string(),
+        }
     }
 
     pub fn transport(message: impl ToString) -> ClientError {
-        ClientError::TransportInavailable { message: message.to_string() }
+        ClientError::TransportInavailable {
+            message: message.to_string(),
+        }
     }
 
     pub fn handshake(message: impl ToString) -> ClientError {
-        ClientError::Handshake { message: message.to_string() }
+        ClientError::Handshake {
+            message: message.to_string(),
+        }
     }
 }

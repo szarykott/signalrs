@@ -20,19 +20,6 @@ pub struct TransportSpec {
     pub transfer_formats: Vec<String>,
 }
 
-impl NegotiateResponseV0 {
-    pub fn supported_spec(connection_id: uuid::Uuid) -> Self {
-        NegotiateResponseV0 {
-            connection_id: connection_id.to_string(),
-            negotiate_version: 0,
-            available_transports: vec![TransportSpec {
-                transport: WEB_SOCKET_TRANSPORT.into(),
-                transfer_formats: vec![TEXT_TRANSPORT_FORMAT.into()],
-            }],
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 /// Sent by the client to agree on the message format.
@@ -48,10 +35,6 @@ impl HandshakeRequest {
             version: 1,
         }
     }
-
-    pub fn is_json(&self) -> bool {
-        self.protocol == "json"
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -63,16 +46,6 @@ pub struct HandshakeResponse {
 }
 
 impl HandshakeResponse {
-    pub fn no_error() -> Self {
-        HandshakeResponse { error: None }
-    }
-
-    pub fn error(reason: impl ToString) -> Self {
-        HandshakeResponse {
-            error: Some(reason.to_string()),
-        }
-    }
-
     pub fn is_error(&self) -> bool {
         self.error.is_some()
     }
@@ -114,16 +87,6 @@ pub struct Close {
     allow_reconnect: Option<bool>,
 }
 
-impl Close {
-    pub fn new(error: Option<String>, allow_reconnect: Option<bool>) -> Self {
-        Close {
-            r#type: MessageType::Close,
-            error,
-            allow_reconnect,
-        }
-    }
-}
-
 /// Indicates a request to invoke a particular method (the Target) with provided Arguments on the remote endpoint.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -163,29 +126,6 @@ impl<A> Invocation<A> {
         }
         self
     }
-
-    pub fn without_id(target: impl Into<String>, arguments: Option<A>) -> Self {
-        Self::new(None, target.into(), arguments)
-    }
-
-    pub fn with_id(
-        invocation_id: impl Into<String>,
-        target: impl Into<String>,
-        arguments: Option<A>,
-    ) -> Self {
-        Self::new(Some(invocation_id.into()), target.into(), arguments)
-    }
-
-    fn new(invocation_id: Option<String>, target: String, arguments: Option<A>) -> Self {
-        Invocation {
-            r#type: MessageType::Invocation,
-            headers: None,
-            invocation_id,
-            target: target.into(),
-            arguments,
-            stream_ids: None,
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -202,17 +142,6 @@ pub struct StreamInvocation<A> {
     #[serde(skip_serializing_if = "Option::is_none")]
     stream_ids: Option<Vec<String>>,
 }
-
-// fn serialize_arguments<S, A>(x: &Option<A>, s: S) -> Result<S::Ok, S::Error>
-// where
-//     S: Serializer,
-//     A: Serialize,
-// {
-//     match x {
-//         Some(value) => s.serialize_some(value),
-//         None => s.serialize_seq(Some(0))?.end(),
-//     }
-// }
 
 impl<A> StreamInvocation<A> {
     pub fn new(
@@ -282,10 +211,6 @@ impl<R> Completion<R> {
         Self::new(invocation_id, None, None)
     }
 
-    pub fn result(invocation_id: impl Into<String>, result: R) -> Self {
-        Self::new(invocation_id, Some(result), None)
-    }
-
     pub fn error(invocation_id: impl Into<String>, error: impl Into<String>) -> Self {
         Self::new(invocation_id, None, Some(error.into()))
     }
@@ -325,16 +250,6 @@ pub struct CancelInvocation {
     #[serde(skip_serializing_if = "Option::is_none")]
     headers: Option<HashMap<String, String>>,
     pub invocation_id: String,
-}
-
-impl CancelInvocation {
-    pub fn new(invocation_id: impl Into<String>) -> Self {
-        CancelInvocation {
-            r#type: MessageType::CancelInvocation,
-            headers: None,
-            invocation_id: invocation_id.into(),
-        }
-    }
 }
 
 #[derive(Debug, Serialize_repr, Deserialize_repr, Clone, Copy, PartialEq, Eq)]

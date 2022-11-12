@@ -1,8 +1,6 @@
-use super::{
-    caller::{self, SignalRClient},
-    hub::Hub,
-    transport,
-};
+//! SignalR client builder
+
+use super::{hub::Hub, transport, SignalRClient};
 use crate::{messages::ClientMessage, protocol::NegotiateResponseV0};
 use thiserror::Error;
 use tokio::net::TcpStream;
@@ -114,11 +112,13 @@ impl ClientBuilder {
 
         let (tx, rx) = flume::bounded::<ClientMessage>(1);
 
-        let (transport_handle, client) = caller::new_client(tx, self.hub);
+        let (transport_handle, client) = crate::new_client(tx, self.hub);
 
-        transport::handshake(&mut ws_handle).await.unwrap(); // TODO: no unwrap
+        transport::websocket::handshake(&mut ws_handle)
+            .await
+            .unwrap(); // TODO: no unwrap
 
-        let transport_future = transport::websocket_hub(ws_handle, transport_handle, rx);
+        let transport_future = transport::websocket::websocket_hub(ws_handle, transport_handle, rx);
 
         tokio::spawn(transport_future);
 

@@ -1,3 +1,5 @@
+//! Client-side hub
+
 mod arguments;
 pub mod error;
 mod functions;
@@ -8,12 +10,11 @@ use self::{
     functions::{Handler, HandlerWrapper, HubMethod},
     invocation::HubInvocation,
 };
+use super::messages::ClientMessage;
 use crate::protocol::MessageType;
 use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::*;
-
-use super::{messages::ClientMessage};
 
 #[derive(Default)]
 pub struct Hub {
@@ -62,7 +63,7 @@ impl Hub {
                 message: format!("target {} not found", target),
             })?;
 
-        method.call(HubInvocation::new(message))
+        method.call(HubInvocation::new(message)?)
     }
 
     fn unsupported(&self, message_type: MessageType) -> Result<(), HubError> {

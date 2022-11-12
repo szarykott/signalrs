@@ -1,7 +1,10 @@
-use thiserror::Error;
-use crate::messages::SerializationError;
 use super::invocation::ExtractionError;
+use crate::messages::SerializationError;
+use thiserror::Error;
 
+/// Generic hub error
+///
+/// Occurs when there is an error during processing of client hub invocation
 #[derive(Debug, Error)]
 pub enum HubError {
     /// Container for all user-defined errors
@@ -35,9 +38,12 @@ pub enum HubError {
     },
 }
 
+/// The request to hub was malformed
+///
+/// For instance json was not correct
 #[derive(Debug, Error)]
 pub enum MalformedRequest {
-    #[error("{source}")]
+    #[error(transparent)]
     Serialization {
         #[from]
         source: SerializationError,

@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::caller::error::ClientError;
+use crate::error::ClientError;
 
 #[derive(Debug, Error)]
 pub enum TransportError {
@@ -9,7 +9,7 @@ pub enum TransportError {
         #[from]
         source: serde_json::Error,
     },
-    
+
     #[error("WebSockets error")]
     Websocket {
         #[from]
@@ -22,7 +22,6 @@ pub enum TransportError {
     #[error("client error")]
     ClientError {
         #[from]
-        source: ClientError
-    }
+        source: ClientError,
+    },
 }
-
