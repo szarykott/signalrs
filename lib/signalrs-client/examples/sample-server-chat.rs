@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use signalrs_client::{hub::Hub, SignalRClient};
-use signalrs_derive::FromInvocation;
+use signalrs_derive::HubArgument;
 use std::time::Duration;
 use tracing::*;
 use tracing_subscriber::{self, filter, prelude::*};
@@ -72,7 +72,7 @@ async fn test(arg: SomeStruct) {
     println!("{:#?}", arg);
 }
 
-#[derive(Debug, FromInvocation, Deserialize)]
+#[derive(Debug, HubArgument, Deserialize)]
 struct SomeStruct {
     data: i32,
     data2: String,

@@ -11,7 +11,7 @@ pub struct HubInvocation {
     pub(crate) state: InvocationState,
 }
 
-pub(crate) struct InvocationState {
+pub struct InvocationState {
     pub(crate) arguments: ArgumentsLeft,
 }
 
@@ -25,7 +25,6 @@ where
 {
     fn try_from_invocation(request: &mut HubInvocation) -> Result<Self, ExtractionError>;
 }
-// ============= Error
 
 #[derive(Debug, Error)]
 pub enum ExtractionError {

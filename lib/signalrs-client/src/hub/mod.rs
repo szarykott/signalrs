@@ -1,9 +1,9 @@
 //! Client-side hub
 
-mod arguments;
+pub mod arguments;
 pub mod error;
 mod functions;
-pub mod invocation;
+pub(crate) mod invocation;
 
 use self::{
     error::{HubError, MalformedRequest},
