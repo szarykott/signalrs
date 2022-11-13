@@ -1,3 +1,83 @@
+//! # SignalR client
+//!
+//! SignalR is an open-source protocol that simplifies adding real-time web functionality to apps.
+//! Real-time web functionality enables server-side code to push content to clients instantly.
+//!
+//! This library is an open source implementation of this protocol's client in Rust.
+//! Originally developed at Microsoft in .NET ecosystem. Read more about it in [`offical documentation`].
+//!
+//! In technical terms it is a RPC framework with bidirectional streaming capabilities.
+//!
+//! ## Why SignalR
+//!
+//! ### Ergonomics
+//!
+//! It allows bidirectional communication with ergonimic programming model.
+//! In cases where real-time communication is required it provides an easy to use framework, abstracting underlying transport layer.
+//! Getting WebSockets right is not an easy task.
+//!
+//! ### Integration with existing services
+//!
+//! Since SignalR originated in .NET ecosystem, there are services that expose SignalR endpoints. This library allows easy integration with them.
+//! This might be especially true for internal tooling at companies that do mostly C#. Truth to be told, it was a reason this library was created in the first place.
+//!  
+//! # Example
+//!
+//! ```rust, no_run
+//! use signalrs_client::SignalRClient;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let client = SignalRClient::builder("localhost")
+//!         .use_port(8080)
+//!         .use_hub("echo")
+//!         .build()
+//!         .await?;
+//!
+//!     let result = client
+//!         .method("echo")
+//!         .arg("message to the server")?
+//!         .invoke::<String>()
+//!         .await?;
+//!
+//! # Ok(())
+//! }
+//! ```
+//!
+//! For more examples see examples folder in [`signalrs-client` examples].
+//!
+//! # Features of SignalR supported by `signalrs_client`
+//!
+//! SignalR as a protocol is defined by two documents:
+//! - [HubProtcol]
+//! - [TransportProtocol]
+//!
+//! Those documents describe details and full capabilities of the protocol.
+//!
+//! Unfortunately, `signalrs_client` only supports a subset of all features, especially regarding supported transports and message formats.
+//! Hovewer, set of features supported is big enough for this library to be usable in simple scenarios.
+//!
+//! ## Transport
+//!
+//! SignalR allows two types of transports to be used:
+//! - WebSockets
+//! - HTTP long polling + Server Sent Events
+//!
+//! This library only supports WebSockets now.
+//!
+//! ## Message encoding
+//!
+//! Two message encoding formats are allowed:
+//! - JSON
+//! - Message Pack
+//!
+//! This library only supports JSON now.
+//!
+//! [`offical documentation`]: https://learn.microsoft.com/en-us/aspnet/core/signalr/introduction?view=aspnetcore-7.0
+//! [HubProtcol]: https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/HubProtocol.md
+//! [TransportProtocol]: https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/TransportProtocols.md
+//! [`signalrs-client` examples]: https://github.com/szarykott/signalrs/tree/main/lib/signalrs-client/examples
+
 #![deny(unsafe_code)]
 
 pub mod arguments;

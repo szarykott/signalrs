@@ -7,7 +7,7 @@ use serde_json::Value;
 use thiserror::Error;
 
 pub struct HubInvocation {
-    pub(crate) message: ClientMessage,
+    pub(crate) _message: ClientMessage,
     pub(crate) state: InvocationState,
 }
 
@@ -50,7 +50,7 @@ impl HubInvocation {
         let arguments = get_arguments(&message)?;
 
         Ok(HubInvocation {
-            message,
+            _message: message,
             state: InvocationState { arguments },
         })
     }

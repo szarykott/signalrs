@@ -28,7 +28,7 @@ where
 }
 
 impl<T> FromInvocation for StreamArg<T> {
-    fn try_from_invocation(request: &mut HubInvocation) -> Result<Self, ExtractionError> {
+    fn try_from_invocation(_request: &mut HubInvocation) -> Result<Self, ExtractionError> {
         // no body yet, here to ensure that Rust will not detect conflicting implementation in some cases
         unimplemented!("not yet implemented")
     }

@@ -37,7 +37,7 @@ async fn get_client(name: String) -> anyhow::Result<SignalRClient> {
 
     let client = SignalRClient::builder("localhost:5261")
         .use_port(5261)
-        .use_hub("chat".into())
+        .use_hub("chat")
         .use_unencrypted_connection()
         .use_query_string(format!("name={name}"))
         .with_client_hub(hub)

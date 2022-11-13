@@ -12,7 +12,6 @@ pub(crate) trait HubMethod {
 /// Represents a hub method
 ///
 /// It abstracts over method that can be called with HubInvocation as a sole argument.
-/// This is internal library detail that appears in public docs due to presence in type bounds.
 pub trait Handler<T> {
     fn call(self, request: HubInvocation) -> Result<(), HubError>;
 }
