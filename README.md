@@ -1,4 +1,5 @@
 [![Docs.rs](https://docs.rs/signalrs-client/badge.svg)](https://docs.rs/signalrs-client/)
+[![crates.io](https://img.shields.io/crates/v/signalrs-client.svg)](https://crates.io/crates/signalrs-client)
 # SignalRs
 
 SignalRs is Rust's implementation of SignalR protocol.
