@@ -1,39 +1,63 @@
 # SignalRs
 
-SignalR implementation in Rust.
+SignalRs is Rust's implementation of SignalR protocol.
 
-**It is a work in progress**
+SignalR is an open-source protocol that simplifies adding real-time web functionality to apps.
+Real-time web functionality enables server-side code to push content to clients instantly.
 
-I am working on it in my free time and I still discover areas I need to implement, which I missed previously. But still progressing.
+This library is an open source implementation of this protocol's client in Rust.
+Originally developed at Microsoft in .NET ecosystem. Read more about it in [`offical documentation`](https://learn.microsoft.com/en-us/aspnet/core/signalr/introduction?view=aspnetcore-7.0).
 
-I need to come up with a nice logo!
+In technical terms it is a RPC framework with bidirectional streaming capabilities.
 
-Oh, and I have no idea if this is blazingly fast (yet).
+**See docs.rs or examples folders of appropriate crates to see how to use it.**
 
-# Features
+ ## Why SignalR
 
-Plan is to support **in MVP**:
-- both client and server
-    - includes stuff necessary to have two-way communication (client invoking server methods and server invoking client methods)
-- WebSocket text communication **only** (no binary, no long polling, no sse)
-- integration with Axum **only**
-- tight integration with Tokio (I desperately need tokio::spawn)
+ ### Ergonomics
 
-Obviously, if this create takes off, other stuff can be implemented.
+ It allows bidirectional communication with ergonimic programming model.
+ In cases where real-time communication is required it provides an easy to use framework, abstracting underlying transport layer.
+ Getting WebSockets right is not an easy task.
 
-# Progress
+ ### Integration with existing services
 
-- Server is mostly fuctional protocol-wise in single client scenarios (no serious concurrent tests yet)
-- Client is a work in progress
-- Axum integration is mostly ready
-- WebSocket text fully supported 
+Since SignalR originated in .NET ecosystem, there are services that expose SignalR endpoints. This library allows easy integration with them.
+This might be especially true for internal tooling at companies that do mostly C#. Truth to be told, it was a reason this library was created in the first place.
+
+
+# Features 🚀
+
+## Client
+
+Client currently supports:
+- call servers with value and stream arguments
+- send a message and:
+  - do not wait for a response
+  - wait for a single response
+  - wait for stream of responses
+- have a client-side hub that supports
+  - value arguments
+- WebSockets
+- JSON
+
+Client does not support (yet):
+- stream arguments to client-side hubs
+- LongPolling
+- ServerSentEvents
+- MsgPack
+
+To view source code of the client see `signalrs-client` crate in this repository.
+
+## Server
+
+Server is a work in progress. It is pretty much advanced and runs, but is not released yet.
+To view its source code see `signalrs-next` crate in this repository.
 
 # Testing
 
-- Unit tests within Rust code
 - Cross-platform testing with:
     - .NET client implementation
-    - JS client implementation
 
 # References
 Internals of the protocol were implemented based on following:
@@ -41,5 +65,4 @@ Internals of the protocol were implemented based on following:
 - Docs:
     - [HubProtcol](https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/HubProtocol.md)
     - [TransportProtocol](https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/TransportProtocols.md)
-- Reverse engineering of .NET implementation
 - Talk [SignalR Deep Dive: Building Servers - David Fowler & Damian Edwards](https://youtu.be/iL9nLAjCPtM)
