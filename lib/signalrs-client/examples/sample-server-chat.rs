@@ -1,6 +1,4 @@
-use serde::Deserialize;
 use signalrs_client::{hub::Hub, SignalRClient};
-use signalrs_derive::HubArgument;
 use std::time::Duration;
 use tracing::*;
 use tracing_subscriber::{self, filter, prelude::*};
@@ -33,9 +31,9 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn get_client(name: String) -> anyhow::Result<SignalRClient> {
-    let hub = Hub::default().method("Send", print).method("Test", test);
+    let hub = Hub::default().method("Send", print);
 
-    let client = SignalRClient::builder("localhost:5261")
+    let client = SignalRClient::builder("localhost")
         .use_port(5261)
         .use_hub("chat")
         .use_unencrypted_connection()
@@ -66,14 +64,4 @@ fn set_tracing_subscriber() {
 
 async fn print(message: String) {
     info!("{message}");
-}
-
-async fn test(arg: SomeStruct) {
-    println!("{:#?}", arg);
-}
-
-#[derive(Debug, HubArgument, Deserialize)]
-struct SomeStruct {
-    data: i32,
-    data2: String,
 }

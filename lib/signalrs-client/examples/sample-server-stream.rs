@@ -9,7 +9,7 @@ async fn main() -> anyhow::Result<()> {
 
     let client = SignalRClient::builder("localhost")
         .use_port(5261)
-        .use_hub("echo")
+        .use_hub("streaming")
         .use_unencrypted_connection()
         .build()
         .await?;

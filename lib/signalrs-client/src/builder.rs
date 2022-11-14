@@ -1,10 +1,12 @@
 //! SignalR client builder
 
 use super::{hub::Hub, transport, SignalRClient};
-use crate::{messages::ClientMessage, protocol::NegotiateResponseV0};
+use crate::{
+    messages::ClientMessage, protocol::NegotiateResponseV0, transport::error::TransportError,
+};
 use thiserror::Error;
 use tokio::net::TcpStream;
-use tokio_tungstenite::{tungstenite, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use tracing::*;
 
 /// [`SignalRClient`] builder.
@@ -58,10 +60,10 @@ pub enum BuilderError {
     },
     #[error("invalid {0} url")]
     Url(String),
-    #[error("websocket error")]
-    Websocket {
+    #[error("transport error")]
+    Transport {
         #[from]
-        source: tungstenite::Error,
+        source: TransportError,
     },
 }
 
@@ -78,6 +80,8 @@ pub enum NegotiateError {
         #[from]
         source: serde_json::Error,
     },
+    #[error("server does not support requested features")]
+    Unsupported,
 }
 
 impl ClientBuilder {
@@ -147,7 +151,9 @@ impl ClientBuilder {
         let negotiate_response = self.get_server_supported_features().await?;
 
         if !can_connect(negotiate_response) {
-            todo!() // return error
+            return Err(BuilderError::Negotiate {
+                source: NegotiateError::Unsupported,
+            });
         }
 
         let mut ws_handle = self.connect_websocket().await?;
@@ -158,7 +164,7 @@ impl ClientBuilder {
 
         transport::websocket::handshake(&mut ws_handle)
             .await
-            .unwrap(); // TODO: no unwrap
+            .map_err(|error| BuilderError::Transport { source: error })?;
 
         let transport_future = transport::websocket::websocket_hub(ws_handle, transport_handle, rx);
 
@@ -178,7 +184,11 @@ impl ClientBuilder {
 
         let url = format!("{}://{}?{}", scheme, domain_and_path, query);
 
-        let (ws_handle, _) = tokio_tungstenite::connect_async(url).await?;
+        let (ws_handle, _) = tokio_tungstenite::connect_async(url)
+            .await
+            .map_err(|error| BuilderError::Transport {
+                source: TransportError::Websocket { source: error },
+            })?;
 
         Ok(ws_handle)
     }

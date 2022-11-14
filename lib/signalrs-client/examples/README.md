@@ -1,0 +1,1 @@
+# All examples require `sample-server` from folder `dotnet` in this reposiotry to be running

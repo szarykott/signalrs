@@ -23,6 +23,14 @@ async fn main() -> anyhow::Result<()> {
 
     assert_eq!("message", result);
 
+    client
+        .method("NoEcho")
+        .arg("message")?
+        .invoke_unit()
+        .await?;
+
+    client.method("NoEcho").arg("message")?.send().await?;
+
     Ok(())
 }
 
