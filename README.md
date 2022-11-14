@@ -1,3 +1,4 @@
+[![Docs.rs](https://docs.rs/signalrs-client/badge.svg)](https://docs.rs/signalrs-client/)
 # SignalRs
 
 SignalRs is Rust's implementation of SignalR protocol.
@@ -12,21 +13,25 @@ In technical terms it is a RPC framework with bidirectional streaming capabiliti
 
 **See docs.rs or examples folders of appropriate crates to see how to use it.**
 
- ## Why SignalR
+## Why SignalR
 
- ### Ergonomics
+### Ergonomics
 
- It allows bidirectional communication with ergonimic programming model.
- In cases where real-time communication is required it provides an easy to use framework, abstracting underlying transport layer.
- Getting WebSockets right is not an easy task.
+It allows bidirectional communication with ergonimic programming model.
+In cases where real-time communication is required it provides an easy to use framework, abstracting underlying transport layer.
+Getting WebSockets right is not an easy task.
 
- ### Integration with existing services
+### Integration with existing services
 
 Since SignalR originated in .NET ecosystem, there are services that expose SignalR endpoints. This library allows easy integration with them.
 This might be especially true for internal tooling at companies that do mostly C#. Truth to be told, it was a reason this library was created in the first place.
 
 
 # Features 🚀
+
+This library is not feature-full and is not battle-tested. It is suitable for internal tooling and personal projects at the moment.
+
+If you happen to find a bug or missing feature - please file an issue.
 
 ## Client
 
