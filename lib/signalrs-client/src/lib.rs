@@ -27,7 +27,7 @@
 //! use signalrs_client::SignalRClient;
 //!
 //! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! async fn main() -> anyhow::Result<()> {
 //!     let client = SignalRClient::builder("localhost")
 //!         .use_port(8080)
 //!         .use_hub("echo")
@@ -56,6 +56,16 @@
 //!
 //! Unfortunately, `signalrs_client` only supports a subset of all features, especially regarding supported transports and message formats.
 //! Hovewer, set of features supported is big enough for this library to be usable in simple scenarios.
+//!
+//! ## Known supported features
+//!
+//! - calling hub methods with all possible return types
+//! - calling hub methods using both value and stream arguments
+//! - client-side hub supports value arguments
+//!
+//! ### Not (yet) supported features
+//!
+//! - client-side hub with stream argumets
 //!
 //! ## Transport
 //!

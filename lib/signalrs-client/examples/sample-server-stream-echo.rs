@@ -7,7 +7,10 @@ use tracing_subscriber::{self, filter, prelude::*};
 async fn main() -> anyhow::Result<()> {
     set_tracing_subscriber();
 
-    let client = SignalRClient::builder("http://localhost:5261/upload")
+    let client = SignalRClient::builder("localhost")
+        .use_port(5261)
+        .use_hub("echo")
+        .use_unencrypted_connection()
         .build()
         .await?;
 
