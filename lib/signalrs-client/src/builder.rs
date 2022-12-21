@@ -113,7 +113,7 @@ impl ClientBuilder {
     }
 
     /// Specifies authentication to use
-    pub fn use_authentication(&mut self, auth: Auth) -> &mut Self {
+    pub fn use_authentication(mut self, auth: Auth) -> Self {
         self.auth = auth;
         self
     }
