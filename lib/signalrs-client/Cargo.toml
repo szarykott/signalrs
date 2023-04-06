@@ -21,7 +21,7 @@ serde_repr = "0.1"
 signalrs-derive = { version = "0.1.0" }
 thiserror = "1.0.31"
 tokio = {version = "1", features = ["full"]}
-tokio-tungstenite = {version = "0.17", features = ["rustls"]}
+tokio-tungstenite = {version = "0.17", features = ["native-tls", "rustls"]}
 tracing = "0.1"
 [dependencies.uuid]
 features = [
