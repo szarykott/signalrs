@@ -203,7 +203,7 @@ impl<'a> InvocationBuilder<'a> {
     /// Assuming server has a hub method defined as:
     /// ```rust,no_run
     /// use futures::stream::Stream;
-    ///
+    /// use futures::stream::StreamExt;
     /// fn answers() -> impl Stream<Item = String> {
     ///     // not really important what happens here
     ///     # futures::stream::repeat("congratulation for looking in the source code".to_string()).take(5)
@@ -217,11 +217,11 @@ impl<'a> InvocationBuilder<'a> {
     ///
     /// # async fn function() -> anyhow::Result<()> {
     /// let client: SignalRClient = get_client();
-    /// let result = client.method("answers")
-    ///     .invoke_stream::<String>()?;
+    /// let mut result = client.method("answers")
+    ///     .invoke_stream::<String>().await?;
     ///
     /// while let Some(answer) = result.next().await {
-    ///     println!("next answer: {}", answer);
+    ///     println!("next answer: {}", answer?);
     /// }
     /// # Ok(())
     /// # }
