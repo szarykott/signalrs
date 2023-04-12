@@ -113,7 +113,7 @@ impl ClientBuilder {
     }
 
     /// Specifies authentication to use
-    pub fn use_authentication(&mut self, auth: Auth) -> &mut Self {
+    pub fn use_authentication(mut self, auth: Auth) -> Self {
         self.auth = auth;
         self
     }
@@ -194,8 +194,12 @@ impl ClientBuilder {
     }
 
     async fn get_server_supported_features(&self) -> Result<NegotiateResponseV0, NegotiateError> {
-        let scheme = self.get_http_scheme();
-        let negotiate_endpoint = format!("{}://{}/negotiate", scheme, self.get_domain_with_path());
+        let negotiate_endpoint = format!(
+            "{}://{}/negotiate?{}",
+            self.get_http_scheme(),
+            self.get_domain_with_path(),
+            self.get_query_string()
+        );
 
         let mut request = reqwest::Client::new().post(negotiate_endpoint);
 
