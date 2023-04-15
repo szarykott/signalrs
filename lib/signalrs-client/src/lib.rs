@@ -234,10 +234,13 @@ impl TransportClientHandle {
         let sender = self.invocations.remove_invocation(&invocation_id);
 
         if let Some(sender) = sender {
-            if sender.send(ClientMessageWrapper {
-                message_type: MessageType::Completion,
-                message,
-            }).is_err() {
+            if sender
+                .send(ClientMessageWrapper {
+                    message_type: MessageType::Completion,
+                    message,
+                })
+                .is_err()
+            {
                 warn!("received completion for a dropped invocation");
                 self.invocations.remove_invocation(&invocation_id);
             }
@@ -259,16 +262,17 @@ impl TransportClientHandle {
 
         let sender = {
             let invocations = self.invocations.invocations.lock().unwrap(); // TODO: can it be posioned, use parking_lot?
-            invocations
-                .get(&invocation_id)
-                .cloned()
+            invocations.get(&invocation_id).cloned()
         };
 
         if let Some(sender) = sender {
-            if sender.send(ClientMessageWrapper {
-                message_type: MessageType::StreamItem,
-                message,
-            }).is_err() {
+            if sender
+                .send(ClientMessageWrapper {
+                    message_type: MessageType::StreamItem,
+                    message,
+                })
+                .is_err()
+            {
                 warn!("received stream item for a dropped invocation");
                 self.invocations.remove_stream_invocation(&invocation_id);
             }

@@ -55,7 +55,7 @@ impl<S> AppendCompletion<S> {
 
     fn get_error_completion(&self, error: String) -> ClientMessage {
         let completion = Completion::<()>::error(self.stream_id.clone(), error);
-        
+
         self.encoding.serialize(completion).unwrap_or_else(|error| {
             event!(Level::ERROR, error = error.to_string(), "serialization error");
             self.get_infallible_completion()

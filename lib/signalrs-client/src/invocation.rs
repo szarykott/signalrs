@@ -84,9 +84,9 @@ impl<'a> InvocationBuilder<'a> {
         B: Serialize + Send + 'static,
     {
         match arg.into() {
-            InvocationArgs::Argument(arg) => self.arguments.push(
-                messages::to_json_value(&arg).map_err(ClientError::malformed_request)?,
-            ),
+            InvocationArgs::Argument(arg) => self
+                .arguments
+                .push(messages::to_json_value(&arg).map_err(ClientError::malformed_request)?),
             InvocationArgs::Stream(stream) => {
                 let stream_id = Uuid::new_v4().to_string();
                 let client_stream = into_client_stream::<B>(stream_id, stream, self.encoding);
