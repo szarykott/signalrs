@@ -1,6 +1,5 @@
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::server::error::SignalRError;
 
@@ -14,7 +13,7 @@ mod upload_sinks;
 
 #[derive(Clone)] // TODO: Is clone really needed?!
 pub struct ConnectionState {
-    pub(crate) connection_id: Uuid,
+    // pub(crate) connection_id: Uuid,
     pub(crate) inflight_invocations: InflightInvocations,
     pub(crate) upload_sinks: UploadSinks,
 }
@@ -22,7 +21,7 @@ pub struct ConnectionState {
 impl Default for ConnectionState {
     fn default() -> Self {
         Self {
-            connection_id: Uuid::new_v4(),
+            // connection_id: Uuid::new_v4(),
             inflight_invocations: Default::default(),
             upload_sinks: Default::default(),
         }
