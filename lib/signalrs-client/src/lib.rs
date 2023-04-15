@@ -197,7 +197,7 @@ impl TransportClientHandle {
             message_type,
         } = message
             .deserialize()
-            .map_err(|error| ClientError::malformed_response(error))?;
+            .map_err(ClientError::malformed_response)?;
 
         return match message_type {
             MessageType::Invocation => self.receive_invocation(message),
@@ -234,10 +234,13 @@ impl TransportClientHandle {
         let sender = self.invocations.remove_invocation(&invocation_id);
 
         if let Some(sender) = sender {
-            if let Err(_) = sender.send(ClientMessageWrapper {
-                message_type: MessageType::Completion,
-                message,
-            }) {
+            if sender
+                .send(ClientMessageWrapper {
+                    message_type: MessageType::Completion,
+                    message,
+                })
+                .is_err()
+            {
                 warn!("received completion for a dropped invocation");
                 self.invocations.remove_invocation(&invocation_id);
             }
@@ -259,16 +262,17 @@ impl TransportClientHandle {
 
         let sender = {
             let invocations = self.invocations.invocations.lock().unwrap(); // TODO: can it be posioned, use parking_lot?
-            invocations
-                .get(&invocation_id)
-                .and_then(|sender| Some(sender.clone()))
+            invocations.get(&invocation_id).cloned()
         };
 
         if let Some(sender) = sender {
-            if let Err(_) = sender.send(ClientMessageWrapper {
-                message_type: MessageType::StreamItem,
-                message,
-            }) {
+            if sender
+                .send(ClientMessageWrapper {
+                    message_type: MessageType::StreamItem,
+                    message,
+                })
+                .is_err()
+            {
                 warn!("received stream item for a dropped invocation");
                 self.invocations.remove_stream_invocation(&invocation_id);
             }
@@ -295,7 +299,7 @@ impl SignalRClient {
         ClientBuilder::new(domain)
     }
 
-    pub fn method<'a>(&'a self, method: impl ToString) -> InvocationBuilder<'a> {
+    pub fn method(&self, method: impl ToString) -> InvocationBuilder<'_> {
         InvocationBuilder::new(self, method)
     }
 
@@ -336,12 +340,12 @@ impl SignalRClient {
         self.invocations.remove_invocation(&invocation_id);
 
         let completion = result
-            .map_err(|error| ClientError::no_response(error))
+            .map_err(ClientError::no_response)
             .and_then(|message| {
                 message
                     .message
                     .deserialize::<Completion<T>>()
-                    .map_err(|error| ClientError::malformed_response(error))
+                    .map_err(ClientError::malformed_response)
             })?;
 
         event!(Level::DEBUG, "response received");
@@ -355,12 +359,12 @@ impl SignalRClient {
         }
     }
 
-    pub(crate) async fn invoke_stream<'a, T>(
-        &'a self,
+    pub(crate) async fn invoke_stream<T>(
+        &self,
         invocation_id: String,
         message: ClientMessage,
         streams: Vec<Box<dyn Stream<Item = ClientMessage> + Unpin + Send>>,
-    ) -> Result<ResponseStream<'a, T>, ClientError>
+    ) -> Result<ResponseStream<'_, T>, ClientError>
     where
         T: DeserializeOwned,
     {
@@ -378,7 +382,7 @@ impl SignalRClient {
         let response_stream = ResponseStream {
             items: rx.into_stream(),
             invocation_id,
-            client: &self,
+            client: self,
             upload: handle,
             _phantom: Default::default(),
         };
@@ -390,7 +394,7 @@ impl SignalRClient {
         self.transport_handle
             .send_async(message)
             .await
-            .map_err(|e| ClientError::transport(e))?;
+            .map_err(ClientError::transport)?;
 
         event!(Level::DEBUG, "message sent");
 
@@ -421,7 +425,7 @@ impl SignalRClient {
             transport_handle
                 .send_async(item)
                 .await
-                .map_err(|e| ClientError::transport(e))?;
+                .map_err(ClientError::transport)?;
 
             event!(Level::TRACE, "stream item sent");
         }
@@ -480,8 +484,8 @@ where
                     let item = message_wrapper
                         .message
                         .deserialize::<StreamItem<T>>()
-                        .map_err(|e| ClientError::malformed_response(e))
-                        .and_then(|item| Ok(item.item));
+                        .map_err(ClientError::malformed_response)
+                        .map(|item| item.item);
                     Poll::Ready(Some(item))
                 }
                 MessageType::Completion => {

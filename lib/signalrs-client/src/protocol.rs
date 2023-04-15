@@ -110,7 +110,7 @@ impl<A> Invocation<A> {
             headers: None,
             invocation_id: None,
             target: target.into(),
-            arguments: arguments,
+            arguments,
             stream_ids: None,
         }
     }

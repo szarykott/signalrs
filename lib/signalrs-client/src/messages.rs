@@ -51,7 +51,7 @@ impl ClientMessage {
 
     pub fn unwrap_text(&self) -> &str {
         match self {
-            ClientMessage::Json(value) => &value,
+            ClientMessage::Json(value) => value,
             ClientMessage::Binary(_) => todo!(),
         }
     }
