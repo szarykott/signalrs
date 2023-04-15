@@ -46,22 +46,20 @@ pub(crate) struct AppendCompletion<S> {
 impl<S> AppendCompletion<S> {
     fn get_ok_completion(&self) -> ClientMessage {
         let completion = Completion::<()>::ok(self.stream_id.clone());
-        let serialized = self.encoding.serialize(completion).unwrap_or_else(|error| {
+
+        self.encoding.serialize(completion).unwrap_or_else(|error| {
             event!(Level::ERROR, error = error.to_string(), "serialization error");
             self.get_infallible_completion()
-        });
-
-        serialized
+        })
     }
 
     fn get_error_completion(&self, error: String) -> ClientMessage {
         let completion = Completion::<()>::error(self.stream_id.clone(), error);
-        let serialized = self.encoding.serialize(completion).unwrap_or_else(|error| {
+        
+        self.encoding.serialize(completion).unwrap_or_else(|error| {
             event!(Level::ERROR, error = error.to_string(), "serialization error");
             self.get_infallible_completion()
-        });
-
-        serialized
+        })
     }
 
     fn get_infallible_completion(&self) -> ClientMessage {

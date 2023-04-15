@@ -82,9 +82,10 @@ impl Hub {
         M: Handler<Args> + Send + Sync + Clone + 'static,
         Args: Send + Sync + 'static,
     {
-        if let Some(_) = self
+        if self
             .methods
             .insert(name.to_string(), Box::new(HandlerWrapper::<M, Args>::from(method)))
+            .is_some()
         {
             warn!("overwritten method {}", name.to_string())
         }
