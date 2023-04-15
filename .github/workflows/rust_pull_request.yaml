@@ -1,6 +1,10 @@
 on: [push, pull_request]
 
-name: PullRequest
+name: RustPullRequest
+
+defaults:
+ run:
+  working-directory: ./lib
 
 jobs:
   check:
