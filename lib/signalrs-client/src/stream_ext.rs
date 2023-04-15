@@ -1,4 +1,7 @@
-use crate::{messages::{SerializationError, MessageEncoding, ClientMessage}, protocol::Completion};
+use crate::{
+    messages::{ClientMessage, MessageEncoding, SerializationError},
+    protocol::Completion,
+};
 
 use futures::{Stream, StreamExt};
 use std::{
