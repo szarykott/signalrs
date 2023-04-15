@@ -89,8 +89,11 @@ jobs:
           toolchain: ${{ matrix.rust }}
           components: clippy
 
-      - name: Run cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Run cargo clippy for signalrs-derive
+        run: cargo clippy --all-targets --all-features -p signalrs-derive -- -D warnings
+
+      - name: Run cargo clippy for signalrs-client
+        run: cargo clippy --all-targets --all-features -p signalrs-client -- -D warnings
 
   check-examples:
     name: Check examples
