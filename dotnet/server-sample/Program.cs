@@ -10,7 +10,7 @@ internal class Program
     private static void Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
-        builder.WebHost.UseUrls("http://localhost:5261", "https://localhost:5262");
+        builder.WebHost.UseUrls("http://localhost:5261");
 
         // Add services to the container.
 

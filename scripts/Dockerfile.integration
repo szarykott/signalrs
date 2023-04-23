@@ -1,0 +1,23 @@
+FROM mcr.microsoft.com/dotnet/sdk:7.0 as dotnet_build
+
+WORKDIR /src
+COPY ./dotnet/server-sample .
+
+RUN mkdir -p /out
+
+RUN dotnet restore -r linux-x64 
+RUN dotnet publish --self-contained -r linux-x64 -c Release --output /out
+
+FROM docker.io/library/rust:1.68.2 as rust
+
+WORKDIR /
+COPY ./lib /lib
+COPY ./scripts /scripts
+COPY --from=dotnet_build /out /server
+
+# WORKDIR /lib
+# RUN cargo build -p client-integration-tests
+
+WORKDIR /scripts
+RUN chmod 777 ./docker-integration-entrypoint.sh 
+ENTRYPOINT ["./docker-integration-entrypoint.sh"]
