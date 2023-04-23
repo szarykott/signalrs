@@ -10,7 +10,7 @@ edition = "2021"
 signalrs-client = { version = "0.1.1", path = "../signalrs-client" }
 
 [dev-dependencies]
-anyhow = "1.0.66"
+anyhow = "=1.0.66"
 async-stream = "0.3"
 rstest = "0.15"
 tokio = {version = "1", features = ["full"]}
