@@ -119,8 +119,14 @@ jobs:
 
   client-integration-tests:
     needs: [test]
-    name: Client integration tests 
-    description: 'Runs signalrs-client against .NET server'
-    runs:
-      using: docker
-      image: ./scripts/Dockerfile
+    name: Client integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3.5.2
+
+      - name: Build test image
+        run: docker build -t signalrs-client-integration-tests -f ./scripts/Dockerfile.integration .
+
+      - name: Run test image
+        run: docker run signalrs-client-integration-tests
