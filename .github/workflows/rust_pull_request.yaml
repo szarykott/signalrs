@@ -55,7 +55,6 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.68.2
           - stable
     steps:
       - name: Checkout sources
@@ -127,6 +126,8 @@ jobs:
 
       - name: Build test image
         run: docker build -t signalrs-client-integration-tests -f ./scripts/Dockerfile.integration .
+        working-directory: .
 
       - name: Run test image
         run: docker run signalrs-client-integration-tests
+        working-directory: .
