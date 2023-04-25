@@ -1,4 +1,8 @@
-on: [push, pull_request]
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
 
 name: RustPullRequest
 
@@ -25,28 +29,7 @@ jobs:
           toolchain: ${{ matrix.rust }}
 
       - name: Run cargo check
-        run: cargo check --all-features
-
-  test:
-    needs: [check]
-    name: Test Suite
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust:
-          - 1.68.2
-          - stable
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v3.5.2
-
-      - name: Install toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ matrix.rust }}
-
-      - name: Run cargo test
-        run: cargo test --all-features
+        run: cargo check --all-features --tests
 
   fmt:
     needs: [check]
@@ -55,7 +38,6 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.68.2
           - stable
     steps:
       - name: Checkout sources
@@ -77,8 +59,11 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.68.2
           - stable
+        package:
+          - signalrs-derive
+          - signalrs-client
+          - client-integration-tests
     steps:
       - name: Checkout sources
         uses: actions/checkout@v3.5.2
@@ -89,15 +74,13 @@ jobs:
           toolchain: ${{ matrix.rust }}
           components: clippy
 
-      - name: Run cargo clippy for signalrs-derive
-        run: cargo clippy --all-targets --all-features -p signalrs-derive -- -D warnings
+      - name: Run cargo clippy for ${{ matrix.package }}
+        run: cargo clippy --all-targets --all-features -p ${{ matrix.package }} -- -D warnings
 
-      - name: Run cargo clippy for signalrs-client
-        run: cargo clippy --all-targets --all-features -p signalrs-client -- -D warnings
 
   check-examples:
-    name: Check examples
     needs: [check]
+    name: Check examples
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -116,3 +99,39 @@ jobs:
 
       - name: Run cargo check
         run: cargo check --examples
+
+  test:
+    needs: [check]
+    name: Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3.5.2
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Run cargo test
+        run: cargo test --all-features --workspace --exclude client-integration-tests
+
+  client-integration-tests:
+    needs: [test, fmt, clippy, check-examples]
+    name: Client integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v3.5.2
+
+      - name: Build test image
+        run: docker build -t signalrs-client-integration-tests -f ./scripts/Dockerfile.integration .
+        working-directory: .
+
+      - name: Run test image
+        run: docker run signalrs-client-integration-tests
+        working-directory: .

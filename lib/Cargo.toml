@@ -6,4 +6,5 @@ members = [
   "signalrs-next",
   "signalrs-derive",
   "playground",
+  "client-integration-tests"
 ]
