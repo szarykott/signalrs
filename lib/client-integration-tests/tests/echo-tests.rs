@@ -25,10 +25,3 @@ async fn main() -> anyhow::Result<()> {
 
     Ok(())
 }
-
-#[tokio::test]
-async fn failing_test() -> anyhow::Result<()> {
-    assert_eq!(true, false);
-
-    Ok(())
-}
