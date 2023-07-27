@@ -1,8 +1,10 @@
 //! SignalR client builder
 
+use std::error::Error;
+
 use super::{hub::Hub, transport, SignalRClient};
 use crate::{
-    messages::ClientMessage, protocol::NegotiateResponseV0, transport::error::TransportError,
+    messages::ClientMessage, protocol::NegotiateResponseV0, transport::{error::TransportError, websocket::WebSocketTransport},
 };
 use thiserror::Error;
 use tokio::net::TcpStream;
@@ -147,16 +149,18 @@ impl ClientBuilder {
     /// Builds an actual clients
     ///
     /// Performs protocol negotiation and server handshake.
-    pub async fn build(self) -> Result<SignalRClient, BuilderError> {
+    pub async fn build(self) -> Result<SignalRClient, Box<dyn Error>> {
         let negotiate_response = self.get_server_supported_features().await?;
 
         if !can_connect(negotiate_response) {
             return Err(BuilderError::Negotiate {
                 source: NegotiateError::Unsupported,
-            });
+            })?;
         }
 
-        let mut ws_handle = self.connect_websocket().await?;
+        let websocket_transport = WebSocketTransport::connect(self.websocket_hub_url()).await?;
+
+        websocket_transport.signalr_handshake().await?;
 
         let (tx, rx) = flume::bounded::<ClientMessage>(1);
 
@@ -175,23 +179,14 @@ impl ClientBuilder {
         Ok(client)
     }
 
-    async fn connect_websocket(
-        &self,
-    ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, BuilderError> {
+    fn websocket_hub_url(&self) -> String {
         let scheme = self.get_ws_scheme();
         let domain_and_path = self.get_domain_with_path();
         let query = self.get_query_string();
 
-        let url = format!("{}://{}?{}", scheme, domain_and_path, query);
-
-        let (ws_handle, _) = tokio_tungstenite::connect_async(url)
-            .await
-            .map_err(|error| BuilderError::Transport {
-                source: TransportError::Websocket { source: error },
-            })?;
-
-        Ok(ws_handle)
+        format!("{}://{}?{}", scheme, domain_and_path, query)
     }
+
 
     async fn get_server_supported_features(&self) -> Result<NegotiateResponseV0, NegotiateError> {
         let negotiate_endpoint = format!(

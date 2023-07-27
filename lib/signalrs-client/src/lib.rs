@@ -100,6 +100,7 @@ mod messages;
 mod protocol;
 mod stream_ext;
 mod transport;
+mod event_loop;
 
 use self::{error::ClientError, invocation::InvocationBuilder};
 use crate::{

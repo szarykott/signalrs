@@ -1,51 +1,144 @@
 use crate::{
-    messages,
+    error,
     protocol::{HandshakeRequest, HandshakeResponse},
-    {error::ClientError, Command},
+    Command,
 };
 use crate::{messages::ClientMessage, TransportClientHandle};
-use futures::{select, FutureExt, SinkExt, StreamExt};
+use futures::{select, FutureExt, SinkExt, StreamExt, Stream};
 use std::{
     fmt::Display,
     time::{Duration, Instant},
 };
+use thiserror::Error;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use tracing::*;
 
 use super::error::TransportError;
 
+pub(crate) struct WebSocketTransport { 
+    websocket: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    close_requested: bool
+}
+
+impl WebSocketTransport {
+    pub async fn connect(url: impl ToString) -> Result<WebSocketTransport, ConnectError> {
+        let (websocket, _) = tokio_tungstenite::connect_async(url.to_string()).await?;
+        
+        Ok(WebSocketTransport {
+            websocket,
+            close_requested: false
+        })
+    }
+
+    pub async fn signalr_handshake(&mut self) -> Result<(), HandshakeError> {
+        self.websocket
+            .send(Message::Text(HandshakeRequest::new("json").try_into()?))
+            .await?;
+    
+        let response = match self.websocket.next().await {
+            Some(response) => response?,
+            None => return Err(HandshakeError::StreamEnded),
+        };
+    
+        match response {
+            Message::Text(value) => {
+                if let HandshakeResponse { error: Some(error) } = value.try_into()? {
+                    Err(HandshakeError::Protocol(error))
+                } else {
+                    Ok(())
+                }
+            }
+            _ => {
+                Err(HandshakeError::Protocol(
+                    "incomprehensible handshake response".to_owned(),
+                ))
+            }
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub(crate) enum ConnectError {
+    #[error("WebSocket error")]
+    Websocket(#[from] tokio_tungstenite::tungstenite::Error),
+}
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub(crate) enum HandshakeError {
+    #[error("handshake payload invalid")]
+    InvalidPayload(#[from] serde_json::Error),
+    #[error("WebSocket error")]
+    Websocket(#[from] tokio_tungstenite::tungstenite::Error),
+    #[error("{0}")]
+    Protocol(String),
+    #[error("connection lost")]
+    StreamEnded,
+}
+
+
+impl WebSocketTransport {
+    pub async fn send_text(&mut self, message: impl Into<String>) -> Result<(), WebSocketSendTextError>
+    {
+        self.websocket
+            .send(Message::Text(message.into()))
+            .await
+            .map_err(|e| e.into())
+    }
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum WebSocketSendTextError {
+    #[error("WebSocket error")]
+    Websocket(#[from] tokio_tungstenite::tungstenite::Error),
+}
+
+
+impl WebSocketTransport {
+    pub async fn receive(&mut self) -> Result<Option<String>, WebSocketReceiveError>
+    {
+        let message = match self.websocket.next().await {
+            Some(message) => message?,
+            None => return Err(WebSocketReceiveError::StreamEnded)
+        };
+
+        match message {
+            Message::Text(text) => return Ok(Some(text)),
+            Message::Binary(_) => return Err(WebSocketReceiveError::UnsupportedBinaryProtocol),
+            Message::Ping(data) => self.send_pong(data).await?,
+            Message::Close(_) => self.close_requested(),
+            Message::Pong(_) | Message::Frame(_) => { /* ignore */ },
+        };
+
+        Ok(None)
+    }
+
+    async fn send_pong(&mut self, data: Vec<u8>) -> Result<(), tokio_tungstenite::tungstenite::Error> {
+        self.websocket
+            .send(Message::Pong(data))
+            .await
+    }
+
+    fn close_requested(&mut self) {
+        self.close_requested = true;
+    }
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum WebSocketReceiveError {
+    #[error("WebSocket error")]
+    Websocket(#[from] tokio_tungstenite::tungstenite::Error),
+    #[error("WebSocket stream ended")]
+    StreamEnded,
+    #[error("received unsupported binary message")]
+    UnsupportedBinaryProtocol
+}
+
 enum Event {
     Close,
     None,
-}
-
-pub(crate) async fn handshake(
-    websocket: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
-) -> Result<(), TransportError> {
-    let request = messages::to_json(&HandshakeRequest::new("json"))?;
-    websocket.send(Message::Text(request)).await?;
-    let response = websocket
-        .next()
-        .await
-        .ok_or_else(|| TransportError::BadReceive)??;
-
-    match response {
-        Message::Text(value) => {
-            let stripped = messages::strip_record_separator(&value);
-            let response: HandshakeResponse = serde_json::from_str(stripped)?;
-            if response.is_error() {
-                return Err(TransportError::from(ClientError::handshake(response.unwrap_error())));
-            }
-        }
-        _ => {
-            return Err(TransportError::from(ClientError::handshake(
-                "incomprehensible handshake response",
-            )));
-        }
-    }
-
-    Ok(())
 }
 
 pub(crate) async fn websocket_hub<'a>(
@@ -55,19 +148,18 @@ pub(crate) async fn websocket_hub<'a>(
 ) {
     let mut last_life_sign = Instant::now();
     let mut messages_to_send = messages_to_send.into_stream().fuse();
-    let mut ticks = tokio::time::interval(Duration::from_secs(30));
+    let mut health_check = tokio::time::interval(Duration::from_secs(30));
+    
     loop {
         let span = debug_span!("websocket");
         select! {
-            _ = ticks.tick().fuse() => {
-                send_ping(&mut websocket).await;
-            },
-            to_send = messages_to_send.next() => {
-                if to_send.is_none() {
+            _ = health_check.tick().fuse() => send_ping(&mut websocket).await,
+            message = messages_to_send.next() => {
+                if message.is_none() {
                     break;
                 }
 
-                send_message(&mut websocket, to_send.unwrap()).instrument(span).await;
+                send_message(&mut websocket, message.unwrap()).instrument(span).await;
             },
             received = websocket.next() => {
                 if received.is_none() {

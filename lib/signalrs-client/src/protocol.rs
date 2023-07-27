@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
 use std::{collections::HashMap, convert::From, fmt::Display};
 
+use crate::messages;
+
 pub const WEB_SOCKET_TRANSPORT: &str = "WebSockets";
 pub const TEXT_TRANSPORT_FORMAT: &str = "Text";
 
@@ -42,7 +44,7 @@ impl HandshakeRequest {
 /// Sent by the server as an acknowledgment of the previous `HandshakeRequest` message. Contains an error if the handshake failed.
 pub struct HandshakeResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
+    pub(crate) error: Option<String>,
 }
 
 impl HandshakeResponse {
@@ -329,4 +331,21 @@ pub struct Arguments<T> {
 pub struct ClientStreams {
     #[serde(rename = "streamIds")]
     pub stream_ids: Option<Vec<String>>,
+}
+
+impl TryInto<String> for HandshakeRequest {
+    type Error = serde_json::Error;
+
+    fn try_into(self) -> Result<String, Self::Error> {
+        messages::to_json(&self)
+    }
+}
+
+impl TryFrom<String> for HandshakeResponse {
+    type Error = serde_json::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        let s = messages::strip_record_separator(&value);
+        serde_json::from_str(s)
+    }
 }
