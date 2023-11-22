@@ -2,6 +2,11 @@ use thiserror::Error;
 
 use crate::error::ClientError;
 
+#[cfg(feature = "tokio-rt")]
+pub type WebSocketError = tokio_tungstenite::tungstenite::Error;
+#[cfg(feature = "async-std-rt")]
+pub type WebSocketError = async_tungstenite::tungstenite::Error;
+
 #[derive(Debug, Error)]
 pub enum TransportError {
     #[error("serialization error: {source}")]
@@ -13,7 +18,7 @@ pub enum TransportError {
     #[error("WebSockets error")]
     Websocket {
         #[from]
-        source: tokio_tungstenite::tungstenite::Error,
+        source: WebSocketError,
     },
 
     #[error("bad message receive")]
