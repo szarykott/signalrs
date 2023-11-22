@@ -5,8 +5,14 @@ use crate::{
     messages::ClientMessage, protocol::NegotiateResponseV0, transport::error::TransportError,
 };
 use thiserror::Error;
+#[cfg(feature = "tokio-rt")]
 use tokio::net::TcpStream;
+#[cfg(feature = "async-std-rt")]
+use async_std::net::TcpStream;
+#[cfg(feature = "tokio-rt")]
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+#[cfg(feature = "async-std-rt")]
+use async_tungstenite::WebSocketStream;
 use tracing::*;
 
 /// [`SignalRClient`] builder.
@@ -168,7 +174,10 @@ impl ClientBuilder {
 
         let transport_future = transport::websocket::websocket_hub(ws_handle, transport_handle, rx);
 
+        #[cfg(feature = "tokio-rt")]
         tokio::spawn(transport_future);
+        #[cfg(feature = "async-std-rt")]
+        async_std::task::spawn(transport_future);
 
         event!(Level::DEBUG, "constructed client");
 
@@ -184,7 +193,14 @@ impl ClientBuilder {
 
         let url = format!("{}://{}?{}", scheme, domain_and_path, query);
 
+        #[cfg(feature = "tokio-rt")]
         let (ws_handle, _) = tokio_tungstenite::connect_async(url)
+            .await
+            .map_err(|error| BuilderError::Transport {
+                source: TransportError::Websocket { source: error },
+            })?;
+        #[cfg(feature = "async-std-rt")]
+        let (ws_handle, _) = async_tungstenite::async_std::connect_async(url)
             .await
             .map_err(|error| BuilderError::Transport {
                 source: TransportError::Websocket { source: error },

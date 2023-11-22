@@ -48,7 +48,12 @@ where
     Fut: Future<Output = ()> + Send,
 {
     fn call(self, _request: HubInvocation) -> Result<(), HubError> {
+        #[cfg(feature = "tokio-rt")]
         tokio::spawn(async move {
+            (self)().await;
+        });
+        #[cfg(feature = "async-std-rt")]
+        async_std::task::spawn(async move {
             (self)().await;
         });
 
@@ -65,7 +70,12 @@ where
     fn call(self, mut request: HubInvocation) -> Result<(), HubError> {
         let arg = T::try_from_invocation(&mut request)?;
 
+        #[cfg(feature = "tokio-rt")]
         tokio::spawn(async move {
+            (self)(arg).await;
+        });
+        #[cfg(feature = "async-std-rt")]
+        async_std::task::spawn(async move {
             (self)(arg).await;
         });
 
@@ -89,7 +99,12 @@ macro_rules! implement_handler {
                     let $ty = $ty::try_from_invocation(&mut request)?;
                 )+
 
+                #[cfg(feature = "tokio-rt")]
                 tokio::spawn(async move {
+                    (self)($($ty,)+).await;
+                });
+                #[cfg(feature = "async-std-rt")]
+                async_std::task::spawn(async move {
                     (self)($($ty,)+).await;
                 });
 

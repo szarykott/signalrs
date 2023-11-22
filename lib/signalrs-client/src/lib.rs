@@ -118,7 +118,10 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+#[cfg(feature = "tokio-rt")]
 use tokio::task::JoinHandle;
+#[cfg(feature = "async-std-rt")]
+use async_std::task::JoinHandle;
 use tracing::*;
 
 pub struct SignalRClient {
@@ -332,10 +335,16 @@ impl SignalRClient {
             return Err(error);
         }
 
+        #[cfg(feature = "tokio-rt")]
         let upload = tokio::spawn(Self::send_streams(self.transport_handle.clone(), streams));
+        #[cfg(feature = "async-std-rt")]
+        let upload = async_std::task::spawn(Self::send_streams(self.transport_handle.clone(), streams));
 
         let result = rx.recv_async().await;
+        #[cfg(feature = "tokio-rt")]
         upload.abort();
+        #[cfg(feature = "async-std-rt")]
+        upload.cancel();
 
         self.invocations.remove_invocation(&invocation_id);
 
@@ -377,7 +386,10 @@ impl SignalRClient {
             return Err(error);
         }
 
+        #[cfg(feature = "tokio-rt")]
         let handle = tokio::spawn(Self::send_streams(self.transport_handle.clone(), streams));
+        #[cfg(feature = "async-std-rt")]
+        let handle = async_std::task::spawn(Self::send_streams(self.transport_handle.clone(), streams));
 
         let response_stream = ResponseStream {
             items: rx.into_stream(),
@@ -464,7 +476,10 @@ impl<'a, T> Drop for ResponseStream<'a, T> {
             .invocations
             .remove_stream_invocation(&self.invocation_id);
 
+        #[cfg(feature = "tokio-rt")]
         self.upload.abort();
+        #[cfg(feature = "async-std-rt")]
+        self.upload.cancel();
     }
 }
 

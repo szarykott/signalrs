@@ -9,8 +9,14 @@ use std::{
     fmt::Display,
     time::{Duration, Instant},
 };
+#[cfg(feature = "tokio-rt")]
 use tokio::net::TcpStream;
+#[cfg(feature = "async-std-rt")]
+use async_std::net::TcpStream;
+#[cfg(feature = "tokio-rt")]
 use tokio_tungstenite::{tungstenite::Message, MaybeTlsStream, WebSocketStream};
+#[cfg(feature = "async-std-rt")]
+use async_tungstenite::{tungstenite::Message, async_std::async_native_tls::MaybeTlsStream, WebSocketStream};
 use tracing::*;
 
 use super::error::TransportError;
